@@ -2,7 +2,8 @@
 'use server';
 
 import { localGuide } from '@/ai/flows/local-guide';
-import { fraudScoringAndReasoning, type FraudScoringInput } from '@/ai/flows/fraud-scoring-and-reasoning';
+import { fraudScoringAndReasoning } from '@/ai/flows/fraud-scoring-and-reasoning';
+import type { FraudScoringInput } from '@/ai/flows/fraud-scoring-and-reasoning';
 import { analyzeServiceRequest } from '@/ai/flows/service-request-analysis';
 import { assignStaffToRequest } from '@/ai/flows/staff-assignment';
 import { predictVibeScore } from '@/ai/flows/vibe-score-predictor';
@@ -11,7 +12,8 @@ import cloudinary from '@/lib/cloudinary';
 import { adminAuth, adminDb } from '@/firebase/admin';
 import { cookies, headers } from 'next/headers';
 import { detectAnomalies } from '@/ai/flows/anomaly-detection-with-explainable-alerts';
-import { getDynamicUtilityFootprintDecision, type DynamicUtilityFootprintInput } from '@/ai/flows/dynamic-utility-footprint';
+import { getDynamicUtilityFootprintDecision } from '@/ai/flows/dynamic-utility-footprint';
+import type { DynamicUtilityFootprintInput } from '@/ai/flows/dynamic-utility-footprint';
 import { uploadDataUri } from '@/lib/cloudinary-server';
 import { bookingAgent, type BookingSession } from '@/ai/flows';
 import { getSession } from '@/ai/flows/session';
@@ -596,31 +598,8 @@ export async function detectAnomaliesAction() {
 }
 
 
-export async function getDufDecisionAction(guestId: string) {
+export async function getDufDecisionAction(input: DynamicUtilityFootprintInput) {
     try {
-        const guest = await getGuestById(guestId);
-        if (!guest) throw new Error("Guest not found");
-
-        const guestBookings = guest.bookingHistory && guest.bookingHistory.length > 0
-            ? (await Promise.all(guest.bookingHistory.map(id => getBookingById(id)))).filter(Boolean)
-            : [];
-
-        const checkedInBooking = guestBookings.find(b => b.status === BookingStatus.CheckedIn);
-        if (!checkedInBooking) throw new Error("Guest is not currently checked-in.");
-
-        const recentRequests = await getRequestsByBookingId(checkedInBooking.id);
-
-        const input: DynamicUtilityFootprintInput = {
-            roomId: checkedInBooking.roomId!,
-            guestStayProfile: `Guest has ${guestBookings.length} previous stays.`,
-            lastCredentialUsage: new Date(Date.now() - Math.random() * 8 * 60 * 60 * 1000).toISOString(), // Simulate last use 0-8 hours ago
-            recentServiceRequests: recentRequests.map(r => `${r.type}: ${r.description}`),
-            inHotelActivity: "No other in-hotel activity is tracked at this time.",
-            guestPreferences: {
-                preferredTemperature: 70, // Placeholder
-            }
-        };
-
         const decision = await getDynamicUtilityFootprintDecision(input);
         return { success: true, decision };
 

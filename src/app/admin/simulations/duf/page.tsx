@@ -6,10 +6,31 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { getDynamicUtilityFootprintDecision, type DynamicUtilityFootprintInput, type DynamicUtilityFootprintOutput } from '@/ai/flows/dynamic-utility-footprint';
+import { getDufDecisionAction } from '@/app/actions';
 import { Loader2, Zap, BrainCircuit, TrendingUp, CircleDollarSign, Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { GradientTitle } from '@/components/ui/gradient-title';
+
+// Re-defining types here as they can't be imported from a 'use server' file.
+type DynamicUtilityFootprintInput = {
+    roomId: string;
+    guestStayProfile: string;
+    lastCredentialUsage: string;
+    recentServiceRequests: string[];
+    inHotelActivity: string;
+    guestPreferences: {
+        preferredTemperature: number;
+    };
+};
+
+type DynamicUtilityFootprintOutput = {
+    decisionType: string;
+    decision: string;
+    reasoning: string;
+    costBenefit: string;
+    actionTrigger: string;
+};
+
 
 const defaultInput: DynamicUtilityFootprintInput = {
     roomId: "405",
@@ -46,8 +67,12 @@ export default function DufSimulationPage() {
         setIsLoading(true);
         setResult(null);
         try {
-            const decision = await getDynamicUtilityFootprintDecision(formState);
-            setResult(decision);
+            const decision = await getDufDecisionAction(formState);
+            if (decision.success) {
+                setResult(decision.decision);
+            } else {
+                 throw new Error(decision.error);
+            }
         } catch (e) {
             const message = e instanceof Error ? e.message : "Failed to get DUF decision.";
             toast({ variant: 'destructive', title: 'Error', description: message });

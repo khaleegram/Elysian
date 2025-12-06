@@ -11,7 +11,7 @@ import { openai } from '@/ai/openai';
 import { z } from 'zod';
 
 // --- 1. Input Schema: Data points for presence prediction ---
-export const DynamicUtilityFootprintInputSchema = z.object({
+const DynamicUtilityFootprintInputSchema = z.object({
   roomId: z.string().describe("The specific room being analyzed."),
   guestStayProfile: z.string().describe("A summary of the guest's typical behavior pattern (e.g., 'Always leaves at 8 AM, returns at 6 PM')."),
   lastCredentialUsage: z.string().describe("ISO 8601 timestamp of the last time the guest's QR/PIN was used to enter the room."),
@@ -24,7 +24,7 @@ export const DynamicUtilityFootprintInputSchema = z.object({
 export type DynamicUtilityFootprintInput = z.infer<typeof DynamicUtilityFootprintInputSchema>;
 
 // --- 2. Output Schema: The AI's decision and reasoning ---
-export const DynamicUtilityFootprintOutputSchema = z.object({
+const DynamicUtilityFootprintOutputSchema = z.object({
   decisionType: z.string().default("Predictive Utility Action"),
   decision: z.string().describe("The specific action to be taken (e.g., 'Set Room 405 to Deep Setback Mode')."),
   reasoning: z.string().describe("A clear, bullet-pointed explanation for the decision, based on the input data."),
