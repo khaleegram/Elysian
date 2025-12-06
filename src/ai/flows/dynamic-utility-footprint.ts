@@ -43,7 +43,7 @@ export type DynamicUtilityFootprintOutput = z.infer<typeof DynamicUtilityFootpri
 export async function getDynamicUtilityFootprintDecision(input: DynamicUtilityFootprintInput): Promise<DynamicUtilityFootprintOutput> {
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-4.1-turbo",
+      model: "gpt-4o",
       messages: [
         {
           role: "system",

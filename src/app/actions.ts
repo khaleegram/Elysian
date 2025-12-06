@@ -13,7 +13,8 @@ import { cookies, headers } from 'next/headers';
 import { detectAnomalies } from '@/ai/flows/anomaly-detection-with-explainable-alerts';
 import { getDynamicUtilityFootprintDecision } from '@/ai/flows/dynamic-utility-footprint';
 import { uploadDataUri } from '@/lib/cloudinary-server';
-import { getSession, updateSession, bookingAgent, type BookingSession } from '@/ai/flows';
+import { bookingAgent, type BookingSession } from '@/ai/flows';
+import { getSession } from '@/ai/flows/session';
 
 import {
   createBooking as dbCreateBooking,
@@ -481,35 +482,17 @@ revalidatePath('/admin/dashboard');
 
 // Server action for the booking agent
 export async function bookingAgentAction(
-    userId: string,
-    userMessage?: string,
-    documentImage?: string,
-    selfieImage?: string
+  session: BookingSession
 ) {
   try {
-    if (!userId) {
+    if (!session.userId) {
       return { error: true, errorMessage: 'Not authenticated' };
     }
-
-    let session = await getSession(userId);
-
-    // Append new message if it exists
-    if (userMessage) {
-        session.history.push({ role: 'user', content: userMessage });
-    }
     
-    if (documentImage) {
-        session.documentImage = documentImage;
-    }
-    if (selfieImage) {
-        session.selfieImage = selfieImage;
-    }
-
     // Call the AI agent logic
     const result = await bookingAgent(session);
     
     return {
-      history: result.history,
       response: result.response,
       bookingId: result.bookingId ?? null,
       requires: result.requires ?? null,
