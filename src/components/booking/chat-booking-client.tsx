@@ -47,7 +47,7 @@ export function ChatBookingClient() {
     }, 100);
   }, []);
 
-  const callBookingAgent = useCallback(async (prompt: string, docImage?: string, selfImage?: string) => {
+  const callBookingAgent = useCallback(async (prompt?: string, docImage?: string, selfImage?: string) => {
     if (!user) return;
     setIsLoading(true);
     setUiRequest(null);
@@ -59,7 +59,7 @@ export function ChatBookingClient() {
 
       setMessages(result.history);
       if (result.bookingId) setBookingId(result.bookingId);
-      if (result.request) setUiRequest(result.request);
+      if (result.request) setUiRequest(result.request as any);
       
     } catch (error) {
       console.error('bookingAgentAction error', error);
@@ -75,7 +75,7 @@ export function ChatBookingClient() {
   // Initial load
   useEffect(() => {
     if (user) {
-      callBookingAgent("");
+      callBookingAgent(); // Call with no prompt to get initial greeting
     } else if (user === null) {
       router.push('/login?redirect=/chat');
       setIsLoading(false);
@@ -122,7 +122,7 @@ export function ChatBookingClient() {
     canvas.getContext('2d')?.drawImage(selfieVideoRef.current, 0, 0, canvas.width, canvas.height);
     const dataUri = canvas.toDataURL('image/jpeg');
     setMessages(prev => [...prev, { role: 'user', content: `<img src="${dataUri}" alt="selfie" class="rounded-lg w-40"/>` }]);
-    callBookingAgent("", undefined, dataUri);
+    callBookingAgent(undefined, undefined, dataUri);
   };
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -132,7 +132,7 @@ export function ChatBookingClient() {
       reader.onloadend = () => {
         const dataUri = reader.result as string;
         setMessages(prev => [...prev, { role: 'user', content: `<img src="${dataUri}" alt="document" class="rounded-lg w-40"/>` }]);
-        callBookingAgent("", dataUri);
+        callBookingAgent(undefined, dataUri);
       };
       reader.readAsDataURL(file);
     }
@@ -196,7 +196,7 @@ export function ChatBookingClient() {
               </div>
             ))}
 
-            {isLoading && (<div className="flex items-start gap-3 justify-start">
+            {isLoading && messages.length > 0 && (<div className="flex items-start gap-3 justify-start">
               <Avatar className="w-8 h-8 bg-primary text-primary-foreground"><AvatarFallback><Bot className="w-5 h-5" /></AvatarFallback></Avatar>
               <div className="bg-muted rounded-lg px-4 py-3"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             </div>)}
@@ -206,7 +206,7 @@ export function ChatBookingClient() {
             {bookingId && (
               <div className="flex justify-center p-4">
                 <Button asChild>
-                  <Link href={`/pass/${bookingId}`}>View Your Digital Pass <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                  <Link href={`/booking/${bookingId}/status`}>View Your Booking Status <ArrowRight className="ml-2 h-4 w-4" /></Link>
                 </Button>
               </div>
             )}
@@ -214,8 +214,8 @@ export function ChatBookingClient() {
         </ScrollArea>
 
         <form onSubmit={handleSendMessage} className="mt-4 flex items-center gap-2">
-          <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="e.g., 'Book a suite for this weekend'" className="flex-1" disabled={isLoading || !user || !!bookingId} />
-          <Button type="submit" size="icon" disabled={isLoading || !input.trim() || !user || !!bookingId}>
+          <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="e.g., 'Book a suite for this weekend'" className="flex-1" disabled={isLoading || !user || !!bookingId || !!uiRequest} />
+          <Button type="submit" size="icon" disabled={isLoading || !input.trim() || !user || !!bookingId || !!uiRequest}>
             <Send className="h-5 w-5" />
           </Button>
         </form>

@@ -79,25 +79,6 @@ async function verifyPaystackTransaction(reference: string) {
     }
 }
 
-const dataUriToBuffer = (dataUri: string) => {
-    const base64 = dataUri.split(',')[1];
-    return Buffer.from(base64, 'base64');
-};
-
-const uploadDataUri = async (dataUri: string, folder: string): Promise<{ secure_url: string; public_id: string }> => {
-    return new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-            { folder },
-            (error, result) => {
-                if (error) reject(error);
-                else if (result) resolve({ secure_url: result.secure_url, public_id: result.public_id });
-                else reject(new Error("Cloudinary upload failed without error."));
-            }
-        );
-        uploadStream.end(dataUriToBuffer(dataUri));
-    });
-};
-
 
 const bookingSchema = z.object({
   guestId: z.string(),
@@ -107,8 +88,8 @@ const bookingSchema = z.object({
   country: z.string().min(2, 'Country is required.'),
   documentType: z.nativeEnum(DocumentType),
   documentNumber: z.string().min(6, "A valid document number is required."),
-  documentImage: z.string().min(1, "Document image is required."), // data URI
-  selfieImage: z.string().optional(),
+  documentImage: z.string().min(1, "Document image is required."), // Now a URL
+  selfieImage: z.string().optional(), // Now a URL
   checkIn: z.string(),
   checkOut: z.string(),
   roomType: z.nativeEnum(RoomType),
@@ -144,12 +125,6 @@ export async function createBookingAction(data: FormData) {
         adults, children, numberOfRooms,
     } = validatedFields.data;
     
-    // --- Parallelize image uploads to Cloudinary ---
-    const [documentImageUpload, selfieImageUpload] = await Promise.all([
-        documentImage ? uploadDataUri(documentImage, "elysian_ai_ids") : Promise.resolve(null),
-        selfieImage ? uploadDataUri(selfieImage, "elysian_ai_selfies") : Promise.resolve(null)
-    ]);
-    
     const clientIp = headers().get('x-forwarded-for') ?? '127.0.0.1';
     
     // --- AI FRAUD & RISK ANALYSIS ---
@@ -157,8 +132,8 @@ export async function createBookingAction(data: FormData) {
         guestName, email: guestEmail, phone: guestPhone, country,
         bookingTime: new Date().toISOString(),
         documentType, documentNumber,
-        documentImageUrl: documentImageUpload?.secure_url || '',
-        selfieImageUrl: selfieImageUpload?.secure_url,
+        documentImageUrl: documentImage, // Pass URL directly
+        selfieImageUrl: selfieImage,     // Pass URL directly
         ipAddress: clientIp, 
         deviceId: `device_${guestId}`, // Placeholder
     };
@@ -169,8 +144,8 @@ export async function createBookingAction(data: FormData) {
     const bookingData: Omit<Booking, 'id' | 'createdAt' | 'accessPin'> = {
       guestId, guestName, guestEmail, guestPhone, country,
       documentType, documentNumber,
-      documentImageUrl: documentImageUpload?.secure_url || '',
-      selfieImageUrl: selfieImageUpload?.secure_url,
+      documentImageUrl: documentImage,
+      selfieImageUrl: selfieImage,
       checkIn: new Date(checkIn), checkOut: new Date(checkOut),
       roomType, roomId: null,
       status: initialStatus,
@@ -504,7 +479,7 @@ export async function updateBookingStatusAction(bookingId: string, newStatus: Bo
 
 
 // Server action for the booking agent
-export async function bookingAgentAction(userId: string, prompt: string, docImage?: string, selfImage?: string) {
+export async function bookingAgentAction(userId: string, prompt?: string, docImage?: string, selfImage?: string) {
   try {
     if (!userId) {
       return { history: [], error: true, errorMessage: 'Not authenticated' };
@@ -613,5 +588,3 @@ export async function detectAnomaliesAction() {
         return { success: false, error: message };
     }
 }
-
-    
