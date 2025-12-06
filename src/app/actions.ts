@@ -12,6 +12,8 @@ import cloudinary from '@/lib/cloudinary';
 import { adminAuth, adminDb } from '@/firebase/admin';
 import { cookies, headers } from 'next/headers';
 import { detectAnomalies } from '@/ai/flows/anomaly-detection-with-explainable-alerts';
+import { getDynamicUtilityFootprintDecision } from '@/ai/flows/dynamic-utility-footprint';
+import { uploadDataUri } from '@/lib/cloudinary-server';
 
 
 import {
@@ -495,12 +497,10 @@ export async function bookingAgentAction(
     const session = await getSession(userId, userName, userEmail, userMessage);
     
     if (documentImage) {
-        const uploadResult = await uploadDataUri(documentImage, "elysian_ai_ids");
-        session.documentImage = uploadResult.secure_url;
+        session.documentImage = documentImage;
     }
     if (selfieImage) {
-        const uploadResult = await uploadDataUri(selfieImage, "elysian_ai_selfies");
-        session.selfieImage = uploadResult.secure_url;
+        session.selfieImage = selfieImage;
     }
 
     const result = await bookingAgent(session);
@@ -518,25 +518,6 @@ export async function bookingAgentAction(
     return { history: [], error: true, errorMessage: (err instanceof Error ? err.message : String(err)) };
   }
 }
-
-const dataUriToBuffer = (dataUri: string) => {
-    const base64 = dataUri.split(',')[1];
-    return Buffer.from(base64, 'base64');
-};
-
-const uploadDataUri = async (dataUri: string, folder: string): Promise<{ secure_url: string; public_id: string }> => {
-    return new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-            { folder },
-            (error, result) => {
-                if (error) reject(error);
-                else if (result) resolve({ secure_url: result.secure_url, public_id: result.public_id });
-                else reject(new Error("Cloudinary upload failed without error."));
-            }
-        );
-        uploadStream.end(dataUriToBuffer(dataUri));
-    });
-};
 
 
 // Server action for Text-to-Speech
@@ -625,6 +606,34 @@ export async function detectAnomaliesAction() {
     } catch (error) {
         const message = error instanceof Error ? error.message : 'An AI error occurred during anomaly detection.';
         console.error("Anomaly Detection Action Error:", message);
+        return { success: false, error: message };
+    }
+}
+
+
+export async function getDufDecisionAction(bookingId: string) {
+    try {
+        const booking = await getBookingById(bookingId);
+        if (!booking) {
+            throw new Error("Booking not found");
+        }
+        
+        const input = {
+            roomId: booking.roomId || 'Unknown',
+            guestStayProfile: "Business traveler, typically out from 9 AM to 5 PM.",
+            lastCredentialUsage: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(), // 4 hours ago
+            recentServiceRequests: ["Ordered room service for breakfast at 7 AM."],
+            inHotelActivity: "No recent in-hotel activity detected.",
+            guestPreferences: {
+                preferredTemperature: 70,
+            }
+        };
+
+        const decision = await getDynamicUtilityFootprintDecision(input);
+        return { success: true, decision };
+
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'An AI error occurred.';
         return { success: false, error: message };
     }
 }
