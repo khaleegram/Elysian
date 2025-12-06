@@ -116,5 +116,3 @@ function AnomalyCard({ anomaly }: { anomaly: Anomaly }) {
         </Card>
     );
 }
-
-    

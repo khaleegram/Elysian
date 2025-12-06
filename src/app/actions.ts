@@ -639,5 +639,3 @@ export async function getDufDecisionAction(bookingId: string) {
         return { success: false, error: message };
     }
 }
-
-    

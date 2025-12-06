@@ -138,5 +138,3 @@ export function DufClient({ checkedInBookings }: { checkedInBookings: any[] }) {
     </Card>
   );
 }
-
-    
