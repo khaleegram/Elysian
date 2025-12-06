@@ -4,6 +4,8 @@ import { AnalyticsClient } from "@/components/admin/analytics-client";
 import { GradientTitle } from "@/components/ui/gradient-title";
 import { BarChart3 } from "lucide-react";
 
+export const dynamic = 'force-dynamic';
+
 export default async function AnalyticsPage() {
     const [bookings, rooms, serviceRequests] = await Promise.all([
         getBookings(),

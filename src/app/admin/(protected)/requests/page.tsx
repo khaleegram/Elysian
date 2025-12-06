@@ -4,6 +4,8 @@ import { ServiceRequestClient } from "@/components/admin/service-request-client"
 import { GradientTitle } from "@/components/ui/gradient-title";
 import { ClipboardList } from "lucide-react";
 
+export const dynamic = 'force-dynamic';
+
 export default async function ServiceRequestsPage() {
     const [requests, bookings] = await Promise.all([
         getServiceRequests(),

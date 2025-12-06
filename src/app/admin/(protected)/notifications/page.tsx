@@ -5,6 +5,8 @@ import { GradientTitle } from "@/components/ui/gradient-title";
 import { AnomalyDetector } from "@/components/admin/anomaly-detector";
 import { Bell } from "lucide-react";
 
+export const dynamic = 'force-dynamic';
+
 export default async function NotificationsPage() {
     const [bookings, serviceRequests] = await Promise.all([
         getBookings(),
@@ -27,5 +29,3 @@ export default async function NotificationsPage() {
         </div>
     );
 }
-
-    
