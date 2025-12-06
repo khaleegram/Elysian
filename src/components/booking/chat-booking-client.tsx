@@ -214,8 +214,8 @@ export function ChatBookingClient() {
         </ScrollArea>
 
         <form onSubmit={handleSendMessage} className="mt-4 flex items-center gap-2">
-          <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="e.g., 'Book a suite for this weekend'" className="flex-1" disabled={isLoading || !user || !!bookingId || !!uiRequest} />
-          <Button type="submit" size="icon" disabled={isLoading || !input.trim() || !user || !!bookingId || !!uiRequest}>
+          <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="e.g., 'Book a suite for this weekend'" className="flex-1" disabled={isLoading || !user || !!bookingId} />
+          <Button type="submit" size="icon" disabled={isLoading || !input.trim() || !user || !!bookingId}>
             <Send className="h-5 w-5" />
           </Button>
         </form>
