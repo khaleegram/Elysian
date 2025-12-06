@@ -3,7 +3,7 @@
  * @fileoverview The primary conversational booking agent flow.
  */
 import { z } from 'zod';
-import { getSession, updateSession, type BookingSession, type Message } from './session';
+import { getSession, updateSession, type BookingSession } from '@/lib/session-server';
 import { getAvailability } from '../tools/get-availability';
 import { createBooking } from '../tools/create-booking';
 import { formatDate } from '@/lib/utils';
@@ -42,7 +42,7 @@ type BookingResponse = z.infer<typeof BookingResponseSchema>;
 
 export async function bookingAgent(
   session: BookingSession
-): Promise<BookingResponse & { history: Message[] }> {
+): Promise<BookingResponse & { history: any[] }> {
   // Always get the latest session from DB to prevent stale state
   const currentSession = await getSession(session.userId);
   let updatedSession = { ...currentSession, ...session };
@@ -201,3 +201,5 @@ The current session state is: ${JSON.stringify({ ...updatedSession, history: '..
   await updateSession(updatedSession.userId, { ...updatedSession, ...finalOutput.state });
   return { ...finalOutput, history: updatedSession.history };
 }
+
+    

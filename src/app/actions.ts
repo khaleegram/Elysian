@@ -16,7 +16,7 @@ import { getDynamicUtilityFootprintDecision } from '@/ai/flows/dynamic-utility-f
 import type { DynamicUtilityFootprintInput } from '@/ai/flows/dynamic-utility-footprint';
 import { uploadDataUri } from '@/lib/cloudinary-server';
 import { bookingAgent } from '@/ai/flows/booking-agent';
-import { getSession, type BookingSession } from '@/ai/flows/session';
+import { type BookingSession } from '@/ai/flows/session';
 
 import {
   createBooking as dbCreateBooking,
@@ -575,26 +575,6 @@ export async function predictVibeScoreAction(guestId: string) {
     }
 }
 
-export async function detectAnomaliesAction() {
-    try {
-        const recentBookings = await getBookings();
-        const recentServiceRequests = await getServiceRequests();
-
-        const result = await detectAnomalies({
-            recentBookings,
-            recentServiceRequests,
-        });
-
-        return { success: true, anomalies: result.anomalies };
-
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'An AI error occurred during anomaly detection.';
-        console.error("Anomaly Detection Action Error:", message);
-        return { success: false, error: message };
-    }
-}
-
-
 export async function getDufDecisionAction(guestId: string): Promise<{ success: boolean; decision?: any; error?: string; }> {
     try {
         if (!guestId) {
@@ -632,3 +612,5 @@ export async function getDufDecisionAction(guestId: string): Promise<{ success: 
         return { success: false, error: message };
     }
 }
+
+    
