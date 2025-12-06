@@ -46,7 +46,7 @@ export function DufClient({ checkedInBookings }: { checkedInBookings: any[] }) {
   
   const handleSelectionChange = (bookingId: string) => {
       setSelectedBookingId(bookingId);
-      // Automatically trigger analysis on selection
+      // Automatically trigger analysis on selection for a smoother demo experience.
       handlePredict(bookingId);
   }
 
@@ -78,7 +78,7 @@ export function DufClient({ checkedInBookings }: { checkedInBookings: any[] }) {
           </Select>
            <Button onClick={() => handlePredict()} disabled={isLoading || !selectedBookingId} className="w-full sm:w-auto">
              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
-            Analyze
+            Re-Analyze
           </Button>
         </div>
 
@@ -138,3 +138,5 @@ export function DufClient({ checkedInBookings }: { checkedInBookings: any[] }) {
     </Card>
   );
 }
+
+    
