@@ -76,15 +76,39 @@ export async function bookingAgent(
   const history = session.history || [];
 
   if (!userMessage && history.length === 0) {
+      const welcomeMessage = "Welcome to ElysianAI! To get started, please provide your desired check-in and check-out dates.";
+      session.history.push({role: 'assistant', content: welcomeMessage});
+      await updateSession(userId, { history: session.history });
       return {
-          response: "Welcome to ElysianAI! To get started, please provide your desired check-in and check-out dates.",
-          history,
+          response: welcomeMessage,
+          history: session.history,
           request: 'dates'
       }
   }
 
   if (userMessage) {
     session.history.push({role: 'user', content: userMessage});
+    // This is a simplified logic. A real agent would parse the userMessage here.
+    // For the demo, we assume the user provides info in order.
+    if (!session.checkIn || !session.checkOut) {
+        // A real implementation would parse dates from `userMessage`. We'll just set some for the demo.
+        const checkIn = new Date();
+        const checkOut = new Date();
+        checkOut.setDate(checkIn.getDate() + 2);
+        session.checkIn = checkIn.toISOString().split('T')[0];
+        session.checkOut = checkOut.toISOString().split('T')[0];
+    } else if (!session.roomType) {
+        const roomTypeMatch = userMessage.match(/Standard|Deluxe|Suite/i);
+        session.roomType = roomTypeMatch ? roomTypeMatch[0] as RoomType : RoomType.Standard;
+    } else if (!session.adults) {
+        session.adults = "2";
+        session.children = "0";
+        session.numberOfRooms = "1";
+    } else if (!session.documentNumber) {
+        session.documentNumber = userMessage;
+    } else if (userMessage.toLowerCase() === 'yes' || userMessage.toLowerCase() === 'confirm') {
+        session.bookingConfirmed = true;
+    }
   }
 
 
@@ -184,7 +208,7 @@ export async function bookingAgent(
   formData.append('guestId', userId);
   formData.append('guestName', guest.name);
   formData.append('guestEmail', guest.email || '');
-  formData.append('guestPhone', guest.phone || '0000000000');
+  formData.append('guestPhone', (guest as any).phone || '0000000000');
   formData.append('country', 'US'); // Placeholder
   formData.append('documentType', 'Passport'); // Placeholder as AI "detects" it
   formData.append('documentNumber', session.documentNumber!);
@@ -203,8 +227,8 @@ export async function bookingAgent(
   const finalResponse = result.success ? `Booking confirmed! Your booking ID is ${bookingId}. You will be redirected shortly.` : `Booking failed: ${result.message}`;
 
   // Update session history
-  const finalHistory = [...history, { role: 'assistant', content: finalResponse }];
-  await updateSession(userId, { history: finalHistory });
+  session.history.push({ role: 'assistant', content: finalResponse });
+  await updateSession(userId, { history: session.history });
 
-  return { response: finalResponse, history: finalHistory, bookingId };
+  return { response: finalResponse, history: session.history, bookingId };
 }
