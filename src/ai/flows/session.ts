@@ -5,7 +5,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
 
 const MessageSchema = z.object({
-    role: z.enum(['user', 'assistant']),
+    role: z.enum(['user', 'assistant', 'tool']),
     content: z.string(),
 });
 export type Message = z.infer<typeof MessageSchema>;
@@ -41,22 +41,18 @@ export async function getSession(userId: string): Promise<BookingSession> {
         }
     }
     
+    // Return a default, empty session if one doesn't exist or is malformed
     return { userId, history: [] };
 }
 
 export async function updateSession(userId: string, data: Partial<BookingSession>): Promise<void> {
     const sessionRef = adminDb.collection('bookingSessions').doc(userId);
     
-    const updateData: Partial<BookingSession> & { updatedAt: any } = {
+    const updateData = {
         ...data,
         updatedAt: FieldValue.serverTimestamp(),
     };
     
-    if (data.history) {
-        // Overwrite history instead of merging
-        updateData.history = data.history;
-    }
-
     await sessionRef.set(updateData, { merge: true });
 }
 

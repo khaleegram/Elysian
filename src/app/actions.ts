@@ -1,9 +1,9 @@
 
+
 'use server';
 
 import { localGuide } from '@/ai/flows/local-guide';
 import { fraudScoringAndReasoning } from '@/ai/flows/fraud-scoring-and-reasoning';
-import type { FraudScoringInput } from '@/ai/flows/fraud-scoring-and-reasoning';
 import { analyzeServiceRequest } from '@/ai/flows/service-request-analysis';
 import { assignStaffToRequest } from '@/ai/flows/staff-assignment';
 import { predictVibeScore } from '@/ai/flows/vibe-score-predictor';
@@ -15,8 +15,8 @@ import { detectAnomalies } from '@/ai/flows/anomaly-detection-with-explainable-a
 import { getDynamicUtilityFootprintDecision } from '@/ai/flows/dynamic-utility-footprint';
 import type { DynamicUtilityFootprintInput } from '@/ai/flows/dynamic-utility-footprint';
 import { uploadDataUri } from '@/lib/cloudinary-server';
-import { bookingAgent, type BookingSession } from '@/ai/flows';
-import { getSession } from '@/ai/flows/session';
+import { bookingAgent } from '@/ai/flows/booking-agent';
+import { getSession, type BookingSession } from '@/ai/flows/session';
 
 import {
   createBooking as dbCreateBooking,
@@ -46,6 +46,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { RoomType, PaymentMethod, BookingStatus, UserRole, RoomStatus, DocumentType, RoomImage, StaffType, Booking, Admin, AuditLogEntry } from '@/lib/types';
 import { countries } from '@/lib/constants';
+import { FraudScoringInput } from '@/ai/flows/fraud-scoring-and-reasoning';
 
 
 // --- Paystack Verification ---
@@ -485,7 +486,7 @@ revalidatePath('/admin/dashboard');
 // Server action for the booking agent
 export async function bookingAgentAction(
   session: BookingSession
-) {
+): Promise<any> {
   try {
     if (!session.userId) {
       return { error: true, errorMessage: 'Not authenticated' };
@@ -494,15 +495,11 @@ export async function bookingAgentAction(
     // Call the AI agent logic
     const result = await bookingAgent(session);
     
-    return {
-      response: result.response,
-      bookingId: result.bookingId ?? null,
-      requires: result.requires ?? null,
-      error: false
-    };
+    return { ...result, error: false };
+
   } catch (err) {
     console.error('bookingAgentAction failed:', err);
-    return { history: [], error: true, errorMessage: (err instanceof Error ? err.message : String(err)) };
+    return { error: true, errorMessage: (err instanceof Error ? err.message : String(err)) };
   }
 }
 
@@ -598,8 +595,35 @@ export async function detectAnomaliesAction() {
 }
 
 
-export async function getDufDecisionAction(input: DynamicUtilityFootprintInput) {
+export async function getDufDecisionAction(guestId: string): Promise<{ success: boolean; decision?: any; error?: string; }> {
     try {
+        if (!guestId) {
+            throw new Error("Guest ID is required.");
+        }
+        
+        const guest = await getGuestById(guestId);
+        if (!guest) {
+            throw new Error(`Guest not found with ID: ${guestId}`);
+        }
+        
+        const guestBookings = guest.bookingHistory && guest.bookingHistory.length > 0 
+            ? (await Promise.all(guest.bookingHistory.map(id => getBookingById(id)))).filter(Boolean) as any[]
+            : [];
+        
+        const currentBooking = guestBookings.find(b => b.status === BookingStatus.CheckedIn);
+
+        // This uses hardcoded data for demonstration, as requested.
+        const input: DynamicUtilityFootprintInput = {
+            roomId: currentBooking?.roomId || "N/A",
+            guestStayProfile: "Business traveler, typically leaves at 8:30 AM and returns around 6:00 PM.",
+            lastCredentialUsage: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+            recentServiceRequests: ["Ordered room service for breakfast at 7:00 AM."],
+            inHotelActivity: "No in-hotel facility usage detected in the last 5 hours.",
+            guestPreferences: {
+                preferredTemperature: 68,
+            },
+        };
+
         const decision = await getDynamicUtilityFootprintDecision(input);
         return { success: true, decision };
 

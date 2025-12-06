@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
+import { BookingSession } from '@/ai/flows/session';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -25,11 +26,12 @@ export function ChatBookingClient() {
   const user = useUser();
   const router = useRouter();
 
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [session, setSession] = useState<BookingSession | null>(null);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [bookingId, setBookingId] = useState<string | null>(null);
   const [requires, setRequires] = useState<'documentImage' | 'selfieImage' | 'nothing' | null>(null);
+  const [bookingId, setBookingId] = useState<string | null>(null);
+
 
   const [selfieStream, setSelfieStream] = useState<MediaStream | null>(null);
   const selfieVideoRef = useRef<HTMLVideoElement>(null);
@@ -47,37 +49,32 @@ export function ChatBookingClient() {
     }, 100);
   }, []);
 
-  const callBookingAgent = useCallback(async (userMessage?: string, docImage?: string, selfImage?: string) => {
-    if (!user) return;
-
+  const callBookingAgent = useCallback(async (currentSession: BookingSession) => {
     setIsLoading(true);
     setRequires(null);
     stopCamera();
 
     try {
-      const result = await bookingAgentAction(user.uid, userMessage, docImage, selfImage);
+      const result = await bookingAgentAction(currentSession);
       if (result.error) throw new Error(result.errorMessage);
-      
-      const newMessages: Message[] = [];
-      if(result.response) {
-        newMessages.push({role: 'assistant', content: result.response});
-      }
 
-      setMessages(prev => [...(result.history || prev), ...newMessages]);
-
+      setSession(prev => ({ ...(prev || currentSession), ...result.state, history: result.history }));
       if (result.bookingId) setBookingId(result.bookingId);
       if (result.requires) setRequires(result.requires as any);
       
     } catch (error) {
       console.error('bookingAgentAction error', error);
       const message = error instanceof Error ? error.message : "Failed to contact booking service.";
-      setMessages(prev => [...(prev || []), { role: 'assistant', content: `I'm having trouble connecting right now. Please try again. \n\n**Error:** ${message}` }]);
+      setSession(prev => ({
+        ...(prev!),
+        history: [...(prev?.history || []), { role: 'assistant', content: `I'm having trouble connecting right now. Please try again. \n\n**Error:** ${message}` }]
+      }));
       toast({ variant: 'destructive', title: 'Network Error', description: message });
     } finally {
       setIsLoading(false);
       scrollToBottom();
     }
-  }, [user, toast, scrollToBottom]);
+  }, [toast, scrollToBottom]);
 
   // Initial load
   useEffect(() => {
@@ -85,24 +82,32 @@ export function ChatBookingClient() {
       router.push('/login?redirect=/chat');
       setIsLoading(false);
     } else if (user) {
-      // Call with no prompt to get initial greeting
-      callBookingAgent(); 
+      const newSession: BookingSession = {
+        userId: user.uid,
+        userName: user.displayName || undefined,
+        userEmail: user.email || undefined,
+        history: [],
+      };
+      setSession(newSession);
+      callBookingAgent(newSession);
     }
   }, [user, router]); // `callBookingAgent` removed to prevent re-triggering
 
-  useEffect(scrollToBottom, [messages]);
+  useEffect(scrollToBottom, [session?.history]);
   
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !user) return;
+    if (!input.trim() || !session) return;
     const currentInput = input;
-    setMessages(prev => [...prev, { role: 'user' as const, content: currentInput }]);
+    const updatedSession = {
+      ...session,
+      history: [...session.history, { role: 'user' as const, content: currentInput }]
+    };
+    setSession(updatedSession);
     setInput('');
-    await callBookingAgent(currentInput);
+    await callBookingAgent(updatedSession);
   };
   
-  // --- Camera and Image Upload Handlers ---
-
   const stopCamera = useCallback(() => {
     if (selfieStream) {
       selfieStream.getTracks().forEach(track => track.stop());
@@ -122,30 +127,32 @@ export function ChatBookingClient() {
   };
   
   const handleTakeSelfie = () => {
-    if (!selfieVideoRef.current) return;
+    if (!selfieVideoRef.current || !session) return;
     const canvas = document.createElement('canvas');
     canvas.width = selfieVideoRef.current.videoWidth;
     canvas.height = selfieVideoRef.current.videoHeight;
     canvas.getContext('2d')?.drawImage(selfieVideoRef.current, 0, 0, canvas.width, canvas.height);
     const dataUri = canvas.toDataURL('image/jpeg');
-    setMessages(prev => [...prev, { role: 'user', content: `<img src="${dataUri}" alt="selfie" class="rounded-lg w-40"/>` }]);
-    callBookingAgent(undefined, undefined, dataUri);
+    const updatedSession = { ...session, selfieImage: dataUri };
+    setSession(updatedSession);
+    callBookingAgent(updatedSession);
   };
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (file && session) {
       const reader = new FileReader();
       reader.onloadend = () => {
         const dataUri = reader.result as string;
-        setMessages(prev => [...prev, { role: 'user', content: `<img src="${dataUri}" alt="document" class="rounded-lg w-40"/>` }]);
-        callBookingAgent(undefined, dataUri);
+        const updatedSession = { ...session, documentImage: dataUri };
+        setSession(updatedSession);
+        callBookingAgent(updatedSession);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  if (isLoading && messages.length === 0) {
+  if (isLoading && !session) {
     return (
       <Card className="max-w-2xl mx-auto shadow-2xl"><CardContent className="p-4 h-[30rem] flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -193,7 +200,7 @@ export function ChatBookingClient() {
       <CardContent className="p-4">
         <ScrollArea className="h-96 w-full pr-4" ref={scrollAreaRef}>
           <div className="space-y-4">
-            {messages.map((message, index) => (
+            {session?.history.map((message, index) => (
               <div key={index} className={cn('flex items-start gap-3', message.role === 'user' ? 'justify-end' : 'justify-start')}>
                 {message.role === 'assistant' && (<Avatar className="w-8 h-8 bg-primary text-primary-foreground"><AvatarFallback><Bot className="w-5 h-5" /></AvatarFallback></Avatar>)}
                 <div className={cn('max-w-sm rounded-lg px-4 py-2 relative group', message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted')}>
@@ -203,7 +210,7 @@ export function ChatBookingClient() {
               </div>
             ))}
 
-            {isLoading && messages.length > 0 && (<div className="flex items-start gap-3 justify-start">
+            {isLoading && session && (<div className="flex items-start gap-3 justify-start">
               <Avatar className="w-8 h-8 bg-primary text-primary-foreground"><AvatarFallback><Bot className="w-5 h-5" /></AvatarFallback></Avatar>
               <div className="bg-muted rounded-lg px-4 py-3"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             </div>)}

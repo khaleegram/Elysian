@@ -3,7 +3,7 @@
  * @fileoverview The primary conversational booking agent flow.
  */
 import { z } from 'zod';
-import { getSession, updateSession, type BookingSession } from './session';
+import { getSession, updateSession, type BookingSession, type Message } from './session';
 import { getAvailability } from '../tools/get-availability';
 import { createBooking } from '../tools/create-booking';
 import { formatDate } from '@/lib/utils';
@@ -42,16 +42,29 @@ type BookingResponse = z.infer<typeof BookingResponseSchema>;
 
 export async function bookingAgent(
   session: BookingSession
-): Promise<BookingResponse> {
-  return bookingAgentFlow(session);
-}
+): Promise<BookingResponse & { history: Message[] }> {
+  // Always get the latest session from DB to prevent stale state
+  const currentSession = await getSession(session.userId);
+  let updatedSession = { ...currentSession, ...session };
 
-const systemPrompt = `You are a friendly and helpful hotel booking assistant for ElysianAI.
+  // Handle image uploads before calling the AI
+  if (updatedSession.documentImage && updatedSession.documentImage.startsWith('data:')) {
+      const uploadResult = await uploadDataUri(updatedSession.documentImage, 'elysian_ai_ids');
+      updatedSession.documentImage = uploadResult.secure_url;
+      updatedSession.history.push({role: 'user', content: '[ID Document Image Uploaded]'});
+  }
+  if (updatedSession.selfieImage && updatedSession.selfieImage.startsWith('data:')) {
+      const uploadResult = await uploadDataUri(updatedSession.selfieImage, 'elysian_ai_selfies');
+      updatedSession.selfieImage = uploadResult.secure_url;
+      updatedSession.history.push({role: 'user', content: '[Selfie Image Uploaded]'});
+  }
+  
+  const systemPrompt = `You are a friendly and helpful hotel booking assistant for ElysianAI.
 Your goal is to guide the user through the booking process smoothly and efficiently.
 The user's message history and the current session state are provided.
 
 Your process MUST follow these steps in order:
-1.  **Greeting & Initial Info**: If this is the first message, greet the user warmly. Check if the session already has check-in dates and a room type. If not, ask for them.
+1.  **Greeting & Initial Info**: If this is the first message from the user, greet them warmly. Check if the session already has check-in dates and a room type. If not, ask for them.
 2.  **Check Availability (CRITICAL STEP)**: Once you have a check-in date, check-out date, AND a room type from the user, you MUST immediately use the 'getAvailability' function tool. Do NOT ask for any other information before performing this check.
 3.  **Handle Availability Response**:
     *   If the 'getAvailability' function tool returns \`isAvailable: false\`, you MUST inform the user that no rooms are available and ask them to choose different dates or a different room type. DO NOT proceed.
@@ -70,121 +83,121 @@ Your process MUST follow these steps in order:
 
 Today's date is ${formatDate(new Date())}.
 Always be polite, clear, and efficient in your responses. You MUST return a JSON object that conforms to the BookingResponse schema.
+The current session state is: ${JSON.stringify({ ...updatedSession, history: '...omitted...' })}
 `;
 
-const tools = [
-    {
-        type: 'function',
-        function: {
-            name: 'getAvailability',
-            description: 'Checks if a given room type is available for the specified dates.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    checkIn: { type: 'string', description: 'The check-in date in YYYY-MM-DD format.'},
-                    checkOut: { type: 'string', description: 'The check-out date in YYYY-MM-DD format.'},
-                    roomType: { type: 'string', enum: ['Standard', 'Deluxe', 'Suite'], description: 'The type of room to check for.'},
-                },
-                required: ['checkIn', 'checkOut', 'roomType'],
-            }
-        }
-    },
-    {
-        type: 'function',
-        function: {
-            name: 'createBooking',
-            description: 'Creates a booking in the system once all information is collected and confirmed.',
-            parameters: {
-                type: 'object',
-                properties: {
-                    guestId: { type: 'string' },
-                    guestName: { type: 'string' },
-                    guestEmail: { type: 'string' },
-                    checkIn: { type: 'string', description: "Check-in date in YYYY-MM-DD format." },
-                    checkOut: { type: 'string', description: "Check-out date in YYYY-MM-DD format." },
-                    roomType: { type: 'string', enum: ['Standard', 'Deluxe', 'Suite'] },
-                    documentNumber: { type: 'string' },
-                    adults: { type: 'string' },
-                    children: { type: 'string' },
-                    numberOfRooms: { type: 'string' },
-                    documentImage: { type: 'string', format: 'uri' },
-                    selfieImage: { type: 'string', format: 'uri' },
-                },
-                required: ['guestId', 'guestName', 'guestEmail', 'checkIn', 'checkOut', 'roomType', 'documentNumber', 'adults', 'children', 'numberOfRooms', 'documentImage', 'selfieImage'],
-            }
-        }
-    }
-];
+  const tools = [
+      {
+          type: 'function',
+          function: {
+              name: 'getAvailability',
+              description: 'Checks if a given room type is available for the specified dates.',
+              parameters: {
+                  type: 'object',
+                  properties: {
+                      checkIn: { type: 'string', description: 'The check-in date in YYYY-MM-DD format.'},
+                      checkOut: { type: 'string', description: 'The check-out date in YYYY-MM-DD format.'},
+                      roomType: { type: 'string', enum: ['Standard', 'Deluxe', 'Suite'], description: 'The type of room to check for.'},
+                  },
+                  required: ['checkIn', 'checkOut', 'roomType'],
+              }
+          }
+      },
+      {
+          type: 'function',
+          function: {
+              name: 'createBooking',
+              description: 'Creates a booking in the system once all information is collected and confirmed.',
+              parameters: {
+                  type: 'object',
+                  properties: {
+                      guestId: { type: 'string' },
+                      guestName: { type: 'string' },
+                      guestEmail: { type: 'string' },
+                      checkIn: { type: 'string', description: "Check-in date in YYYY-MM-DD format." },
+                      checkOut: { type: 'string', description: "Check-out date in YYYY-MM-DD format." },
+                      roomType: { type: 'string', enum: ['Standard', 'Deluxe', 'Suite'] },
+                      documentNumber: { type: 'string' },
+                      adults: { type: 'string' },
+                      children: { type: 'string' },
+                      numberOfRooms: { type: 'string' },
+                      documentImage: { type: 'string', format: 'uri' },
+                      selfieImage: { type: 'string', format: 'uri' },
+                  },
+                  required: ['guestId', 'guestName', 'guestEmail', 'checkIn', 'checkOut', 'roomType', 'documentNumber', 'adults', 'children', 'numberOfRooms', 'documentImage', 'selfieImage'],
+              }
+          }
+      }
+  ];
 
-async function bookingAgentFlow(session: BookingSession): Promise<BookingResponse> {
-    // Handle image uploads before calling the AI
-    if (session.documentImage && session.documentImage.startsWith('data:')) {
-        const uploadResult = await uploadDataUri(session.documentImage, 'elysian_ai_ids');
-        session.documentImage = uploadResult.secure_url;
-        session.history.push({role: 'user', content: '[ID Document Image Uploaded]'});
-    }
-    if (session.selfieImage && session.selfieImage.startsWith('data:')) {
-        const uploadResult = await uploadDataUri(session.selfieImage, 'elysian_ai_selfies');
-        session.selfieImage = uploadResult.secure_url;
-         session.history.push({role: 'user', content: '[Selfie Image Uploaded]'});
-    }
+  const messages: any[] = [
+      { role: 'system', content: systemPrompt },
+      ...updatedSession.history.map(h => ({ role: h.role, content: h.content })),
+  ];
 
-    const messages: any[] = [
-        { role: 'system', content: systemPrompt },
-        ...session.history.map(h => ({ role: h.role, content: h.content })),
-    ];
+  const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: messages,
+      tools: tools,
+      tool_choice: 'auto',
+      response_format: { type: 'json_object' }
+  });
 
-    const response = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: messages,
-        tools: tools,
-        tool_choice: 'auto',
-        response_format: { type: 'json_object' }
-    });
+  const responseMessage = response.choices[0].message;
+  updatedSession.history.push({ role: 'assistant', content: responseMessage.content || '' });
+  const toolCalls = responseMessage.tool_calls;
 
-    const responseMessage = response.choices[0].message;
-    const toolCalls = responseMessage.tool_calls;
+  let finalOutput: BookingResponse;
 
-    if (toolCalls) {
-        messages.push(responseMessage); // Add assistant's reply to history
-        for (const toolCall of toolCalls) {
-            const functionName = toolCall.function.name;
-            const functionArgs = JSON.parse(toolCall.function.arguments);
-            let functionResponse;
+  if (toolCalls) {
+      messages.push(responseMessage); // Add assistant's reply to history
+      for (const toolCall of toolCalls) {
+          const functionName = toolCall.function.name;
+          const functionArgs = JSON.parse(toolCall.function.arguments);
+          let functionResponse;
 
-            if (functionName === 'getAvailability') {
-                functionResponse = await getAvailability(functionArgs);
-            } else if (functionName === 'createBooking') {
-                const bookingArgs = { ...functionArgs, guestId: session.userId };
-                functionResponse = await createBooking(bookingArgs);
-            }
+          if (functionName === 'getAvailability') {
+              functionResponse = await getAvailability(functionArgs);
+          } else if (functionName === 'createBooking') {
+              const bookingArgs = { ...functionArgs, guestId: updatedSession.userId };
+              functionResponse = await createBooking(bookingArgs);
+          }
 
-            messages.push({
-                tool_call_id: toolCall.id,
-                role: 'tool',
-                name: functionName,
-                content: JSON.stringify(functionResponse),
-            });
-        }
-        
-        const secondResponse = await openai.chat.completions.create({
-            model: 'gpt-4o',
-            messages: messages,
-            response_format: { type: 'json_object' }
-        });
-        
-        const jsonOutput = secondResponse.choices[0].message.content;
-        const parsedOutput = BookingResponseSchema.parse(JSON.parse(jsonOutput || '{}'));
-        await updateSession(session.userId, { ...session, ...parsedOutput });
-        return parsedOutput;
+          messages.push({
+              tool_call_id: toolCall.id,
+              role: 'tool',
+              name: functionName,
+              content: JSON.stringify(functionResponse),
+          });
+          // Also add to session history for context
+          updatedSession.history.push({
+            role: 'tool',
+            name: functionName,
+            content: JSON.stringify(functionResponse),
+          } as any);
+      }
+      
+      const secondResponse = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: messages,
+          response_format: { type: 'json_object' }
+      });
+      
+      const jsonOutput = secondResponse.choices[0].message.content;
+      finalOutput = BookingResponseSchema.parse(JSON.parse(jsonOutput || '{}'));
+      if (finalOutput.response) {
+        updatedSession.history.push({ role: 'assistant', content: finalOutput.response });
+      }
 
-    } else {
-        const jsonOutput = response.choices[0].message.content;
-        if (!jsonOutput) {
-            throw new Error("AI response was empty.");
-        }
-        const parsedOutput = BookingResponseSchema.parse(JSON.parse(jsonOutput));
-        await updateSession(session.userId, { ...session, ...parsedOutput });
-        return parsedOutput;
-    }
+  } else {
+      const jsonOutput = response.choices[0].message.content;
+      if (!jsonOutput) {
+          throw new Error("AI response was empty.");
+      }
+      finalOutput = BookingResponseSchema.parse(JSON.parse(jsonOutput));
+      // The initial response is already in the history from line 123
+  }
+  
+  await updateSession(updatedSession.userId, { ...updatedSession, ...finalOutput.state });
+  return { ...finalOutput, history: updatedSession.history };
 }
