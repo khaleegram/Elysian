@@ -42,7 +42,7 @@ export async function bookingAgent(
   // Load session and guest info
   let session = await getSession(userId);
   const guestDoc = await adminDb.collection('guests').doc(userId).get();
-  const guest: Guest = guestDoc.exists ? (guestDoc.data() as Guest) : { id: userId, name: 'Valued Guest', email: '' };
+  const guest: Guest = guestDoc.exists ? { id: userId, name: guestDoc.data()!.name, email: guestDoc.data()!.email } : { id: userId, name: 'Valued Guest', email: '' };
 
   // --- Start of Deterministic Logic ---
 
@@ -82,7 +82,7 @@ export async function bookingAgent(
       session.selfieImage = uploadResult.secure_url;
   }
   
-  // --- Step 1: Check for missing info and request it ---
+  // --- Step 1: Check for missing booking info and request it ---
   if (session.history.length === 0 || (session.history.length === 1 && session.history[0].role === 'user')) {
       const welcomeMessage = "Welcome to ElysianAI! To get started, please provide your desired check-in and check-out dates.";
       session.history.push({role: 'assistant', content: welcomeMessage});
@@ -103,7 +103,18 @@ export async function bookingAgent(
     await updateSession(userId, session);
     return { response: responseText, history: session.history, request: 'roomType' };
   }
+  
+  // --- Step 2: Check room availability (Moved Up) ---
+  const availableRooms: Room[] = await getAvailableRoomsForType(session.roomType!, new Date(session.checkIn), new Date(session.checkOut));
+  if (availableRooms.length === 0) {
+    const responseText = "Sorry, no rooms of that type are available for your selected dates. Please choose different dates.";
+    session.history.push({role: 'assistant', content: responseText});
+    // Reset dates to re-trigger the date prompt
+    await updateSession(userId, { history: session.history, checkIn: undefined, checkOut: undefined });
+    return { response: responseText, history: session.history, request: 'dates' };
+  }
 
+  // --- Step 3: Gather remaining details ---
   if (!session.adults || !session.children || !session.numberOfRooms) {
     const responseText = "Got it. How many adults, children, and rooms will you need?";
     session.history.push({role: 'assistant', content: responseText });
@@ -132,16 +143,7 @@ export async function bookingAgent(
     return { response: responseText, history: session.history, request: 'selfieImage' };
   }
 
-  // --- Step 2: Check room availability ---
-  const availableRooms: Room[] = await getAvailableRoomsForType(session.roomType!, new Date(session.checkIn), new Date(session.checkOut));
-  if (availableRooms.length === 0) {
-    const responseText = "Sorry, no rooms of that type are available for your selected dates. Please choose different dates.";
-    session.history.push({role: 'assistant', content: responseText});
-    await updateSession(userId, { history: session.history, checkIn: undefined, checkOut: undefined });
-    return { response: responseText, history: session.history, request: 'dates' };
-  }
-
-  // --- Step 3: Confirm booking ---
+  // --- Step 4: Confirm booking ---
   if (!session.bookingConfirmed) {
     const summary = `I've found an available ${session.roomType} room for you.
 - **Guest**: ${guest.name}
@@ -154,7 +156,7 @@ export async function bookingAgent(
     return { response: responseText, history: session.history, request: 'confirmBooking' };
   }
 
-  // --- Step 4: Create booking ---
+  // --- Step 5: Create booking ---
   const formData = new FormData();
   formData.append('guestId', userId);
   formData.append('guestName', guest.name);
