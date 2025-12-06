@@ -4,14 +4,29 @@ import { NotificationClient } from "@/components/admin/notification-client";
 import { GradientTitle } from "@/components/ui/gradient-title";
 import { AnomalyDetector } from "@/components/admin/anomaly-detector";
 import { Bell } from "lucide-react";
+import { Timestamp } from "firebase-admin/firestore";
+
 
 export const dynamic = 'force-dynamic';
 
 export default async function NotificationsPage() {
-    const [bookings, serviceRequests] = await Promise.all([
+    const [bookingsData, serviceRequestsData] = await Promise.all([
         getBookings(),
         getServiceRequests()
     ]);
+
+    // Serialize date objects before passing to client component
+    const bookings = bookingsData.map(b => ({
+      ...b,
+      checkIn: b.checkIn instanceof Timestamp ? b.checkIn.toDate().toISOString() : b.checkIn,
+      checkOut: b.checkOut instanceof Timestamp ? b.checkOut.toDate().toISOString() : b.checkOut,
+      createdAt: b.createdAt instanceof Timestamp ? b.createdAt.toDate().toISOString() : b.createdAt,
+    }));
+
+    const serviceRequests = serviceRequestsData.map(r => ({
+        ...r,
+        createdAt: r.createdAt instanceof Timestamp ? r.createdAt.toDate().toISOString() : r.createdAt,
+    }));
 
     return (
         <div className="flex-1 space-y-8 p-4 md:p-8 pt-6">
