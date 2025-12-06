@@ -1,13 +1,14 @@
 
 'use client';
 
-import { Guest, Booking } from "@/lib/types";
+import { Guest, Booking, BookingStatus } from "@/lib/types";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { BookingDetails } from "./booking-details";
 import { GradientTitle } from "../ui/gradient-title";
-import { History, Mail, Phone } from "lucide-react";
+import { History, Mail, Phone, Bot, HeartPulse } from "lucide-react";
+import { VibeScoreMonitor } from "../dashboard/vibe-score-monitor";
 
 type GuestProfileClientProps = {
     guest: Guest;
@@ -15,7 +16,7 @@ type GuestProfileClientProps = {
 }
 
 export function GuestProfileClient({ guest, bookings }: GuestProfileClientProps) {
-
+    const checkedInBookings = bookings.filter(b => b.status === BookingStatus.CheckedIn) as any;
     return (
         <div className="space-y-6">
             <header className="flex items-center gap-4">
@@ -28,31 +29,38 @@ export function GuestProfileClient({ guest, bookings }: GuestProfileClientProps)
                     {guest.phone && <p className="text-muted-foreground flex items-center gap-2"><Phone className="h-4 w-4" /> {guest.phone}</p>}
                 </div>
             </header>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2"><History className="h-5 w-5"/> Booking History</CardTitle>
-                    <CardDescription>A complete record of all stays for {guest.name}.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {bookings.length > 0 ? (
-                        <Accordion type="single" collapsible className="w-full">
-                            {bookings.map(booking => (
-                                <AccordionItem value={booking.id} key={booking.id}>
-                                    <AccordionTrigger>
-                                        <BookingDetails booking={booking} asHeader={true} />
-                                    </AccordionTrigger>
-                                    <AccordionContent>
-                                        <BookingDetails booking={booking} />
-                                    </AccordionContent>
-                                </AccordionItem>
-                            ))}
-                        </Accordion>
-                    ) : (
-                        <p className="text-muted-foreground text-center py-8">No booking history found for this guest.</p>
-                    )}
-                </CardContent>
-            </Card>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                 <div className="lg:col-span-2 space-y-6">
+                     <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2"><History className="h-5 w-5"/> Booking History</CardTitle>
+                            <CardDescription>A complete record of all stays for {guest.name}.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {bookings.length > 0 ? (
+                                <Accordion type="single" collapsible className="w-full">
+                                    {bookings.map(booking => (
+                                        <AccordionItem value={booking.id} key={booking.id}>
+                                            <AccordionTrigger>
+                                                <BookingDetails booking={booking} asHeader={true} />
+                                            </AccordionTrigger>
+                                            <AccordionContent>
+                                                <BookingDetails booking={booking} />
+                                            </AccordionContent>
+                                        </AccordionItem>
+                                    ))}
+                                </Accordion>
+                            ) : (
+                                <p className="text-muted-foreground text-center py-8">No booking history found for this guest.</p>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
+                 <div className="space-y-6">
+                    <VibeScoreMonitor guests={checkedInBookings} singleGuestId={guest.id} />
+                </div>
+            </div>
         </div>
     );
 }

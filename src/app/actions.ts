@@ -2,7 +2,7 @@
 'use server';
 
 import { localGuide } from '@/ai/flows/local-guide';
-import { fraudScoringAndReasoning, FraudScoringInput } from '@/ai/flows/fraud-scoring-and-reasoning';
+import { fraudScoringAndReasoning, type FraudScoringInput } from '@/ai/flows/fraud-scoring-and-reasoning';
 import { analyzeServiceRequest } from '@/ai/flows/service-request-analysis';
 import { assignStaffToRequest } from '@/ai/flows/staff-assignment';
 import { predictVibeScore } from '@/ai/flows/vibe-score-predictor';
@@ -11,7 +11,7 @@ import cloudinary from '@/lib/cloudinary';
 import { adminAuth, adminDb } from '@/firebase/admin';
 import { cookies, headers } from 'next/headers';
 import { detectAnomalies } from '@/ai/flows/anomaly-detection-with-explainable-alerts';
-import { getDynamicUtilityFootprintDecision } from '@/ai/flows/dynamic-utility-footprint';
+import { getDynamicUtilityFootprintDecision, type DynamicUtilityFootprintInput } from '@/ai/flows/dynamic-utility-footprint';
 import { uploadDataUri } from '@/lib/cloudinary-server';
 import { bookingAgent, type BookingSession } from '@/ai/flows';
 import { getSession } from '@/ai/flows/session';
@@ -596,23 +596,28 @@ export async function detectAnomaliesAction() {
 }
 
 
-export async function getDufDecisionAction(bookingId: string) {
+export async function getDufDecisionAction(guestId: string) {
     try {
-        const booking = await getBookingById(bookingId);
-        if (!booking) {
-            throw new Error("Booking not found");
-        }
-        
-        // For demonstration purposes, we use realistic but hardcoded data.
-        // This ensures a predictable and impressive demo for the judges.
-        const input = {
-            roomId: booking.roomId || 'Unknown',
-            guestStayProfile: "Business traveler, typically leaves the hotel at 8:30 AM and returns around 6:00 PM. Tends to stay in the room in the evenings.",
-            lastCredentialUsage: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(), // Simulates guest left 4 hours ago
-            recentServiceRequests: ["Ordered room service for breakfast at 7:15 AM."],
-            inHotelActivity: "No restaurant, bar, or other facility usage detected in the past 4 hours.",
+        const guest = await getGuestById(guestId);
+        if (!guest) throw new Error("Guest not found");
+
+        const guestBookings = guest.bookingHistory && guest.bookingHistory.length > 0
+            ? (await Promise.all(guest.bookingHistory.map(id => getBookingById(id)))).filter(Boolean)
+            : [];
+
+        const checkedInBooking = guestBookings.find(b => b.status === BookingStatus.CheckedIn);
+        if (!checkedInBooking) throw new Error("Guest is not currently checked-in.");
+
+        const recentRequests = await getRequestsByBookingId(checkedInBooking.id);
+
+        const input: DynamicUtilityFootprintInput = {
+            roomId: checkedInBooking.roomId!,
+            guestStayProfile: `Guest has ${guestBookings.length} previous stays.`,
+            lastCredentialUsage: new Date(Date.now() - Math.random() * 8 * 60 * 60 * 1000).toISOString(), // Simulate last use 0-8 hours ago
+            recentServiceRequests: recentRequests.map(r => `${r.type}: ${r.description}`),
+            inHotelActivity: "No other in-hotel activity is tracked at this time.",
             guestPreferences: {
-                preferredTemperature: 70, // In Fahrenheit
+                preferredTemperature: 70, // Placeholder
             }
         };
 

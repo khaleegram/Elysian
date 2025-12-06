@@ -28,6 +28,7 @@ import {
   QrCode,
   Megaphone,
   BrainCircuit,
+  TestTube,
 } from 'lucide-react';
 import { ElysianAILogo } from '@/components/icons';
 import { AdminGate } from '@/components/admin/admin-gate';
@@ -46,6 +47,7 @@ const menuItems = [
   { href: '/admin/users', label: 'User Management', icon: Users },
   { href: '/admin/notifications', label: 'Notifications', icon: Bell },
   { href: '/admin/duf', label: 'DUF Monitor', icon: BrainCircuit },
+  { href: '/admin/simulations/duf', label: 'AI Simulations', icon: TestTube },
   { href: '/billboard', label: 'Billboard', icon: Megaphone },
 ];
 
@@ -71,7 +73,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <SidebarMenuItem key={item.href}>
                     <Link href={item.href} target={item.label === 'Billboard' ? '_blank' : '_self'}>
                       <SidebarMenuButton
-                        isActive={pathname === item.href}
+                        isActive={pathname.startsWith(item.href) && (item.href !== '/admin/dashboard' || pathname === item.href)}
                         tooltip={item.label}
                         className="justify-start"
                       >
