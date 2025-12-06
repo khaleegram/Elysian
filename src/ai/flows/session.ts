@@ -1,71 +1,73 @@
-
 'use server';
 
 import { adminDb } from '@/firebase/admin';
-import { RoomType } from '@/lib/types';
-import { Timestamp } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { z } from 'zod';
+import { BookingResponseSchema } from './booking-agent';
 
-// Define the structure of the session object in Firestore
-export interface BookingSession {
-    userId: string;
-    history: { role: 'user' | 'assistant'; content: string }[];
-    checkIn?: string;
-    checkOut?: string;
-    roomType?: RoomType;
-    adults?: string;
-    children?: string;
-    numberOfRooms?: string;
-    documentNumber?: string;
-    documentImage?: string; // This will be a URL
-    selfieImage?: string; // This will be a URL
-    bookingConfirmed?: boolean;
-    updatedAt?: Timestamp;
-}
+export const MessageSchema = z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string(),
+});
+export type Message = z.infer<typeof MessageSchema>;
 
-/**
- * Retrieves the current user's booking session state from Firestore.
- * @param userId - The unique ID of the user.
- * @returns The user's session data.
- */
-export async function getSession(userId: string): Promise<BookingSession> {
-    if (!userId) {
-        throw new Error("User ID is required to get a session.");
-    }
+export const BookingSessionSchema = z.object({
+    userId: z.string(),
+    userName: z.string().optional(),
+    userEmail: z.string().optional(),
+    history: z.array(MessageSchema).optional(),
+    checkIn: z.string().optional(),
+    checkOut: z.string().optional(),
+    roomType: z.string().optional(),
+    documentNumber: z.string().optional(),
+    documentImage: z.string().optional(),
+    selfieImage: z.string().optional(),
+    updatedAt: z.any().optional(),
+});
+export type BookingSession = z.infer<typeof BookingSessionSchema>;
+
+export async function getSession(userId: string, userName?: string, userEmail?: string, userMessage?: string): Promise<BookingSession> {
     const sessionRef = adminDb.collection('bookingSessions').doc(userId);
     const sessionDoc = await sessionRef.get();
     
+    let session: BookingSession;
     if (sessionDoc.exists) {
-        const data = sessionDoc.data() as BookingSession;
-        // Ensure history is always an array
-        return { ...data, history: data.history || [] };
+        session = BookingSessionSchema.parse(sessionDoc.data());
+    } else {
+        session = { userId, history: [] };
     }
-    
-    // Return a new session with an empty history array if it doesn't exist
-    return { userId, history: [] };
+
+    if (userName) session.userName = userName;
+    if (userEmail) session.userEmail = userEmail;
+    if (userMessage) {
+        if (!session.history) session.history = [];
+        session.history.push({ role: 'user', content: userMessage });
+    }
+
+    return session;
 }
 
-/**
- * Updates the user's booking session with new information.
- * It filters out any undefined values before writing to Firestore.
- * @param userId - The unique ID of the user.
- * @param data - The partial session data to update.
- * @returns A success status object.
- */
-export async function updateSession(userId: string, data: Partial<BookingSession>): Promise<{ status: string }> {
-     if (!userId) {
-        throw new Error("User ID is required to update a session.");
-    }
+export async function updateSession(userId: string, data: any): Promise<void> {
     const sessionRef = adminDb.collection('bookingSessions').doc(userId);
+    
+    const updateData: Partial<BookingSession> = {};
 
-    // Create a clean object to save, removing any keys with 'undefined' values
-    const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
-        if (value !== undefined) {
-            acc[key as keyof BookingSession] = value;
-        }
-        return acc;
-    }, {} as Partial<BookingSession>);
+    if (data.response) {
+        updateData.history = FieldValue.arrayUnion({ role: 'assistant', content: data.response }) as any;
+    }
+    if (data.checkIn) updateData.checkIn = data.checkIn;
+    if (data.checkOut) updateData.checkOut = data.checkOut;
+    if (data.roomType) updateData.roomType = data.roomType;
+    if (data.documentNumber) updateData.documentNumber = data.documentNumber;
+    if (data.documentImage) updateData.documentImage = data.documentImage;
+    if (data.selfieImage) updateData.selfieImage = data.selfieImage;
 
-    // Use set with merge: true to create or update the document
-    await sessionRef.set({ ...cleanData, updatedAt: Timestamp.now() }, { merge: true });
-    return { status: "success" };
+    updateData.updatedAt = FieldValue.serverTimestamp();
+
+    await sessionRef.set(updateData, { merge: true });
+}
+
+export async function clearSession(userId: string): Promise<void> {
+    const sessionRef = adminDb.collection('bookingSessions').doc(userId);
+    await sessionRef.delete();
 }

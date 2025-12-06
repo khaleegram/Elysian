@@ -30,15 +30,13 @@ export function ChatBookingClient() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [bookingId, setBookingId] = useState<string | null>(null);
+  const [requires, setRequires] = useState<'documentImage' | 'selfieImage' | 'nothing' | null>(null);
 
-  // New state for UI requests from the bot
-  const [uiRequest, setUiRequest] = useState<'documentImage' | 'selfieImage' | null>(null);
   const [selfieStream, setSelfieStream] = useState<MediaStream | null>(null);
   const selfieVideoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
-  
+
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
         if (scrollAreaRef.current) {
@@ -47,24 +45,30 @@ export function ChatBookingClient() {
     }, 100);
   }, []);
 
-  const callBookingAgent = useCallback(async (prompt?: string, docImage?: string, selfImage?: string) => {
+  const callBookingAgent = useCallback(async (userMessage?: string, docImage?: string, selfImage?: string) => {
     if (!user) return;
+
     setIsLoading(true);
-    setUiRequest(null);
+    setRequires(null);
     stopCamera();
 
     try {
-      const result = await bookingAgentAction(user.uid, prompt, docImage, selfImage);
+      const result = await bookingAgentAction(user.uid, user.displayName || '', user.email || '', userMessage, docImage, selfImage);
       if (result.error) throw new Error(result.errorMessage);
+      
+      // The history from the server is the source of truth
+      setMessages(result.history || []);
+      if (result.response) {
+        setMessages(prev => [...(prev || []), {role: 'assistant', content: result.response}]);
+      }
 
-      setMessages(result.history);
       if (result.bookingId) setBookingId(result.bookingId);
-      if (result.request) setUiRequest(result.request as any);
+      if (result.requires) setRequires(result.requires as any);
       
     } catch (error) {
       console.error('bookingAgentAction error', error);
       const message = error instanceof Error ? error.message : "Failed to contact booking service.";
-      setMessages(prev => [...prev, { role: 'assistant', content: `I'm having trouble connecting right now. Please try again. \n\n**Error:** ${message}` }]);
+      setMessages(prev => [...(prev || []), { role: 'assistant', content: `I'm having trouble connecting right now. Please try again. \n\n**Error:** ${message}` }]);
       toast({ variant: 'destructive', title: 'Network Error', description: message });
     } finally {
       setIsLoading(false);
@@ -80,16 +84,15 @@ export function ChatBookingClient() {
       router.push('/login?redirect=/chat');
       setIsLoading(false);
     }
-  }, [user, router, callBookingAgent]);
+  }, [user, router]); // `callBookingAgent` removed to prevent re-triggering
 
   useEffect(scrollToBottom, [messages]);
   
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || !user) return;
-    const newMessages = [...messages, { role: 'user' as const, content: input }];
-    setMessages(newMessages);
     const currentInput = input;
+    setMessages(prev => [...prev, { role: 'user' as const, content: currentInput }]);
     setInput('');
     await callBookingAgent(currentInput);
   };
@@ -147,7 +150,7 @@ export function ChatBookingClient() {
   }
 
   const renderActionUI = () => {
-    if (uiRequest === 'documentImage') {
+    if (requires === 'documentImage') {
       return (
         <Alert>
           <UploadCloud className="h-4 w-4" />
@@ -160,7 +163,7 @@ export function ChatBookingClient() {
         </Alert>
       );
     }
-    if (uiRequest === 'selfieImage') {
+    if (requires === 'selfieImage') {
       return (
         <Alert>
           <Camera className="h-4 w-4" />
@@ -214,8 +217,8 @@ export function ChatBookingClient() {
         </ScrollArea>
 
         <form onSubmit={handleSendMessage} className="mt-4 flex items-center gap-2">
-          <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="e.g., 'Book a suite for this weekend'" className="flex-1" disabled={isLoading || !user || !!bookingId} />
-          <Button type="submit" size="icon" disabled={isLoading || !input.trim() || !user || !!bookingId}>
+          <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="e.g., 'Book a suite for this weekend'" className="flex-1" disabled={isLoading || !user || !!bookingId || !!requires} />
+          <Button type="submit" size="icon" disabled={isLoading || !input.trim() || !user || !!bookingId || !!requires}>
             <Send className="h-5 w-5" />
           </Button>
         </form>

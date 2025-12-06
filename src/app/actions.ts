@@ -1,7 +1,7 @@
 
 'use server';
 
-import { bookingAgent } from '@/ai/flows/booking-agent';
+import { bookingAgent, BookingSession, getSession } from '@/ai/flows';
 import { localGuide } from '@/ai/flows/local-guide';
 import { fraudScoringAndReasoning, FraudScoringInput } from '@/ai/flows/fraud-scoring-and-reasoning';
 import { analyzeServiceRequest } from '@/ai/flows/service-request-analysis';
@@ -474,23 +474,43 @@ export async function updateBookingStatusAction(bookingId: string, newStatus: Bo
     };
     await updateBooking(bookingId, { status: newStatus, notes }, auditLogEntry);
     revalidatePath('/admin/bookings');
-    revalidatePath('/admin/dashboard');
+revalidatePath('/admin/dashboard');
 }
 
 
 // Server action for the booking agent
-export async function bookingAgentAction(userId: string, prompt?: string, docImage?: string, selfImage?: string) {
+export async function bookingAgentAction(
+    userId: string,
+    userName: string,
+    userEmail: string,
+    userMessage?: string,
+    documentImage?: string,
+    selfieImage?: string
+) {
   try {
     if (!userId) {
-      return { history: [], error: true, errorMessage: 'Not authenticated' };
+      return { error: true, errorMessage: 'Not authenticated' };
     }
-    const result = await bookingAgent(userId, prompt, docImage, selfImage);
+
+    const session = await getSession(userId, userName, userEmail, userMessage);
+    
+    if (documentImage) {
+        const uploadResult = await uploadDataUri(documentImage, "elysian_ai_ids");
+        session.documentImage = uploadResult.secure_url;
+    }
+    if (selfieImage) {
+        const uploadResult = await uploadDataUri(selfieImage, "elysian_ai_selfies");
+        session.selfieImage = uploadResult.secure_url;
+    }
+
+    const result = await bookingAgent(session);
+    
     // Normalize result
     return {
-      history: Array.isArray(result?.history) ? result.history : [],
-      response: result?.response ?? '',
-      bookingId: result?.bookingId ?? null,
-      request: result?.request ?? null,
+      history: session.history,
+      response: result.response,
+      bookingId: result.bookingId ?? null,
+      requires: result.requires ?? null,
       error: false
     };
   } catch (err) {
@@ -498,6 +518,26 @@ export async function bookingAgentAction(userId: string, prompt?: string, docIma
     return { history: [], error: true, errorMessage: (err instanceof Error ? err.message : String(err)) };
   }
 }
+
+const dataUriToBuffer = (dataUri: string) => {
+    const base64 = dataUri.split(',')[1];
+    return Buffer.from(base64, 'base64');
+};
+
+const uploadDataUri = async (dataUri: string, folder: string): Promise<{ secure_url: string; public_id: string }> => {
+    return new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            { folder },
+            (error, result) => {
+                if (error) reject(error);
+                else if (result) resolve({ secure_url: result.secure_url, public_id: result.public_id });
+                else reject(new Error("Cloudinary upload failed without error."));
+            }
+        );
+        uploadStream.end(dataUriToBuffer(dataUri));
+    });
+};
+
 
 // Server action for Text-to-Speech
 export async function textToSpeechAction(text: string) {

@@ -1,199 +1,78 @@
-
 'use server';
+/**
+ * @fileoverview The primary conversational booking agent flow.
+ */
+import {ai} from '@/ai/genkit';
+import {z} from 'genkit';
+import { getSession, updateSession, type BookingSession } from './session';
+import { getAvailabilityTool } from '../tools/get-availability';
+import { createBookingTool } from '../tools/create-booking';
+import { formatDate } from '@/lib/utils';
 
-import { getSession, updateSession, BookingSession } from './session';
-import { getAvailableRoomsForType } from '@/lib/data';
-import { RoomType, Guest, Room } from '@/lib/types';
-import { adminDb } from '@/firebase/admin';
-import { createBookingAction } from '@/app/actions';
-import cloudinary from '@/lib/cloudinary';
+export const BookingStateSchema = z.object({
+    hasAvailability: z.boolean().optional().describe('Whether there is availability for the given dates and room type.'),
+    isReadyForBooking: z.boolean().optional().describe('Whether all necessary information has been collected to create the booking.'),
+    missingInfo: z.array(z.string()).optional().describe('A list of pieces of information that are still missing from the user.'),
+});
+export type BookingState = z.infer<typeof BookingStateSchema>;
 
-// --- Image Upload Helpers ---
-const dataUriToBuffer = (dataUri: string) => {
-    const base64 = dataUri.split(',')[1];
-    return Buffer.from(base64, 'base64');
-};
-
-const uploadDataUri = async (dataUri: string, folder: string): Promise<{ secure_url: string; public_id: string }> => {
-    return new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-            { folder },
-            (error, result) => {
-                if (error) reject(error);
-                else if (result) resolve({ secure_url: result.secure_url, public_id: result.public_id });
-                else reject(new Error("Cloudinary upload failed without error."));
-            }
-        );
-        uploadStream.end(dataUriToBuffer(dataUri));
-    });
-};
-
-
-type UIRequest = 'dates' | 'roomType' | 'numberOfGuests' | 'documentNumber' | 'documentImage' | 'selfieImage' | 'confirmBooking';
+export const BookingResponseSchema = z.object({
+    response: z.string().describe('The textual response to the user.'),
+    state: BookingStateSchema.optional().describe('The current state of the booking flow.'),
+    bookingId: z.string().optional().describe('The ID of the booking that was created.'),
+    requires: z.enum(['documentImage', 'selfieImage', 'nothing']).optional().describe('The next piece of information required from the user.'),
+});
+export type BookingResponse = z.infer<typeof BookingResponseSchema>;
 
 export async function bookingAgent(
-  userId: string,
-  userMessage?: string,
-  documentImage?: string, // base64 data URI
-  selfieImage?: string // base64 data URI
-): Promise<{ response: string; history: any[]; bookingId?: string; request?: UIRequest }> {
-  if (!userId) throw new Error('User not authenticated');
-
-  // Load session and guest info
-  let session = await getSession(userId);
-  const guestDoc = await adminDb.collection('guests').doc(userId).get();
-  const guest: Guest = guestDoc.exists ? { id: userId, name: guestDoc.data()!.name, email: guestDoc.data()!.email } : { id: userId, name: 'Valued Guest', email: '' };
-
-  // --- Start of Deterministic Logic ---
-
-  // Handle incoming user text message
-  if (userMessage) {
-    session.history.push({role: 'user', content: userMessage});
-    
-    if (session.bookingConfirmed) {
-        session = { userId, history: session.history }; // Reset session
-    } else if (!session.checkIn || !session.checkOut) {
-        // Simple date parsing. In a real app, use GPT tool.
-        session.checkIn = new Date().toISOString().split('T')[0];
-        const checkoutDate = new Date();
-        checkoutDate.setDate(checkoutDate.getDate() + 2);
-        session.checkOut = checkoutDate.toISOString().split('T')[0];
-    } else if (!session.roomType) {
-        const roomTypeMatch = userMessage.match(/Standard|Deluxe|Suite/i);
-        session.roomType = roomTypeMatch ? roomTypeMatch[0] as RoomType : undefined;
-    } else if (!session.adults) {
-        session.adults = "2";
-        session.children = "0";
-        session.numberOfRooms = "1";
-    } else if (!session.documentNumber) {
-        session.documentNumber = userMessage;
-    } else if (userMessage.toLowerCase() === 'yes' || userMessage.toLowerCase() === 'confirm') {
-        session.bookingConfirmed = true;
-    }
-  }
-  
-  // Handle incoming images
-  if (documentImage) {
-      const uploadResult = await uploadDataUri(documentImage, "elysian_ai_ids");
-      session.documentImage = uploadResult.secure_url;
-  }
-  if (selfieImage) {
-      const uploadResult = await uploadDataUri(selfieImage, "elysian_ai_selfies");
-      session.selfieImage = uploadResult.secure_url;
-  }
-  
-  // --- Step 1: Check for missing booking info and request it ---
-  if (session.history.length === 0 || (session.history.length === 1 && session.history[0].role === 'user')) {
-      const welcomeMessage = "Welcome to ElysianAI! To get started, please provide your desired check-in and check-out dates.";
-      session.history.push({role: 'assistant', content: welcomeMessage});
-      await updateSession(userId, { history: session.history });
-      return { response: welcomeMessage, history: session.history, request: 'dates' };
-  }
-
-  if (!session.checkIn || !session.checkOut) {
-    const responseText = "Please provide your check-in and check-out dates (e.g., 'Dec 10 to Dec 12').";
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, session);
-    return { response: responseText, history: session.history, request: 'dates' };
-  }
-
-  if (!session.roomType) {
-    const responseText = `Great. Which room type would you like? Your options are: ${Object.values(RoomType).join(', ')}.`;
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, session);
-    return { response: responseText, history: session.history, request: 'roomType' };
-  }
-  
-  // --- Step 2: Check room availability (Moved Up) ---
-  const availableRooms: Room[] = await getAvailableRoomsForType(session.roomType!, new Date(session.checkIn), new Date(session.checkOut));
-  if (availableRooms.length === 0) {
-    const responseText = "Sorry, no rooms of that type are available for your selected dates. Please choose different dates.";
-    session.history.push({role: 'assistant', content: responseText});
-    // Reset dates to re-trigger the date prompt
-    await updateSession(userId, { history: session.history, checkIn: undefined, checkOut: undefined });
-    return { response: responseText, history: session.history, request: 'dates' };
-  }
-
-  // --- Step 3: Gather remaining details ---
-  if (!session.adults || !session.children || !session.numberOfRooms) {
-    const responseText = "Got it. How many adults, children, and rooms will you need?";
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, session);
-    return { response: responseText, history: session.history, request: 'numberOfGuests' };
-  }
-
-  if (!session.documentNumber) {
-    const responseText = "For verification, please enter your ID document number (e.g., passport number).";
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, session);
-    return { response: responseText, history: session.history, request: 'documentNumber' };
-  }
-
-  if (!session.documentImage) {
-    const responseText = "Thank you. Now, please upload a clear image of that ID document.";
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, session);
-    return { response: responseText, history: session.history, request: 'documentImage' };
-  }
-
-  if (!session.selfieImage) {
-    const responseText = "Almost done. Please take a live selfie for verification.";
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, session);
-    return { response: responseText, history: session.history, request: 'selfieImage' };
-  }
-
-  // --- Step 4: Confirm booking ---
-  if (!session.bookingConfirmed) {
-    const summary = `I've found an available ${session.roomType} room for you.
-- **Guest**: ${guest.name}
-- **Dates**: ${session.checkIn} to ${session.checkOut}
-- **Occupancy**: ${session.adults} adults, ${session.children} children.
-`;
-    const responseText = summary + "\nPlease type 'yes' to confirm this booking.";
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, session);
-    return { response: responseText, history: session.history, request: 'confirmBooking' };
-  }
-
-  // --- Step 5: Create booking ---
-  const formData = new FormData();
-  formData.append('guestId', userId);
-  formData.append('guestName', guest.name);
-  formData.append('guestEmail', guest.email || '');
-  formData.append('guestPhone', (guest as any).phone || '0000000000');
-  formData.append('country', 'US');
-  formData.append('documentType', 'Passport');
-  formData.append('documentNumber', session.documentNumber!);
-  formData.append('documentImage', session.documentImage!); 
-  formData.append('selfieImage', session.selfieImage!);     
-  formData.append('checkIn', session.checkIn!);
-  formData.append('checkOut', session.checkOut!);
-  formData.append('roomType', session.roomType!);
-  formData.append('adults', session.adults!);
-  formData.append('children', session.children!);
-  formData.append('numberOfRooms', session.numberOfRooms!);
-
-  const result = await createBookingAction(formData);
-
-  const bookingId = result.success ? result.bookingId : undefined;
-  const finalResponse = result.success ? `Booking confirmed! Your booking ID is ${bookingId}. You will be redirected shortly.` : `Booking failed: ${result.message}`;
-
-  session.history.push({ role: 'assistant', content: finalResponse });
-  // Clear the session for the next booking
-  await updateSession(userId, {
-    history: session.history,
-    checkIn: undefined,
-    checkOut: undefined,
-    roomType: undefined,
-    adults: undefined,
-    children: undefined,
-    numberOfRooms: undefined,
-    documentNumber: undefined,
-    documentImage: undefined,
-    selfieImage: undefined,
-    bookingConfirmed: undefined,
-  });
-
-  return { response: finalResponse, history: session.history, bookingId };
+    session: BookingSession
+): Promise<BookingResponse> {
+    return bookingAgentFlow(session);
 }
+
+const bookingAgentPrompt = ai.definePrompt({
+    name: 'bookingAgentPrompt',
+    input: {schema: z.any()},
+    output: {schema: BookingResponseSchema},
+    tools: [getAvailabilityTool, createBookingTool],
+    system: `You are a friendly and helpful hotel booking assistant.
+Your goal is to guide the user through the booking process.
+The user's message history is provided, along with the current state of the booking.
+The state is rebuilt on every turn, so you must re-evaluate it every time.
+
+Your process is as follows:
+1.  Greet the user and ask for their desired dates and room type if not already provided.
+2.  Once you have dates and a room type, you MUST use the 'getAvailabilityTool' to check for room availability. This is a mandatory step.
+3.  Based on the tool's response, update the 'hasAvailability' state. If there is no availability, inform the user and ask them to try different dates or room types.
+4.  If there is availability, proceed to gather the remaining information required for booking: guest name, email, phone, document number, ID image, and selfie image. The user's name and email may already be in the session. For the images, you must prompt the user to upload them by setting the 'requires' field in your response to 'documentImage' or 'selfieImage'.
+5.  Once all information is gathered, set 'isReadyForBooking' to true and ask the user for final confirmation.
+6.  Upon user confirmation, use the 'createBookingTool' to finalize the booking.
+7.  If the booking is successful, include the bookingId in your response and congratulate the user.
+
+Always be polite and clear in your responses.
+Analyze the user's latest message in the context of the session history and current state.
+Today's date is ${formatDate(new Date())}.
+`,
+});
+
+const bookingAgentFlow = ai.defineFlow(
+    {
+        name: 'bookingAgentFlow',
+        inputSchema: z.any(),
+        outputSchema: BookingResponseSchema,
+    },
+    async (session) => {
+        const {output} = await bookingAgentPrompt(session);
+        if (!output) {
+            return {
+                response: 'The booking agent failed to generate a response.',
+                state: {
+                    isReadyForBooking: false,
+                    hasAvailability: false,
+                }
+            };
+        }
+        await updateSession(session.userId, output);
+        return output;
+    }
+);
