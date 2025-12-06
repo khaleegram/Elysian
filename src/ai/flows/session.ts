@@ -16,8 +16,8 @@ export interface BookingSession {
     children?: string;
     numberOfRooms?: string;
     documentNumber?: string;
-    documentImage?: string; // This will be a data URI
-    selfieImage?: string; // This will be a data URI
+    documentImage?: string; // This will be a URL
+    selfieImage?: string; // This will be a URL
     bookingConfirmed?: boolean;
     updatedAt?: Timestamp;
 }
@@ -46,6 +46,7 @@ export async function getSession(userId: string): Promise<BookingSession> {
 
 /**
  * Updates the user's booking session with new information.
+ * It filters out any undefined values before writing to Firestore.
  * @param userId - The unique ID of the user.
  * @param data - The partial session data to update.
  * @returns A success status object.
@@ -55,7 +56,16 @@ export async function updateSession(userId: string, data: Partial<BookingSession
         throw new Error("User ID is required to update a session.");
     }
     const sessionRef = adminDb.collection('bookingSessions').doc(userId);
+
+    // Create a clean object to save, removing any keys with 'undefined' values
+    const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
+        if (value !== undefined) {
+            acc[key as keyof BookingSession] = value;
+        }
+        return acc;
+    }, {} as Partial<BookingSession>);
+
     // Use set with merge: true to create or update the document
-    await sessionRef.set({ ...data, updatedAt: Timestamp.now() }, { merge: true });
+    await sessionRef.set({ ...cleanData, updatedAt: Timestamp.now() }, { merge: true });
     return { status: "success" };
 }
