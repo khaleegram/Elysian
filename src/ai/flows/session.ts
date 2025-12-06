@@ -4,13 +4,13 @@ import { adminDb } from '@/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
 
-export const MessageSchema = z.object({
+const MessageSchema = z.object({
     role: z.enum(['user', 'assistant']),
     content: z.string(),
 });
 export type Message = z.infer<typeof MessageSchema>;
 
-export const BookingSessionSchema = z.object({
+const BookingSessionSchema = z.object({
     userId: z.string(),
     userName: z.string().optional(),
     userEmail: z.string().optional(),
@@ -34,7 +34,11 @@ export async function getSession(userId: string): Promise<BookingSession> {
     const sessionDoc = await sessionRef.get();
     
     if (sessionDoc.exists) {
-        return BookingSessionSchema.parse(sessionDoc.data());
+        // Safe parsing, falling back to a default structure if it doesn't match
+        const parsed = BookingSessionSchema.safeParse(sessionDoc.data());
+        if (parsed.success) {
+            return parsed.data;
+        }
     }
     
     return { userId, history: [] };

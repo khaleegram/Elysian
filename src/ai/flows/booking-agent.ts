@@ -10,7 +10,7 @@ import { formatDate } from '@/lib/utils';
 import { uploadDataUri } from '@/lib/cloudinary-server';
 import { openai } from '@/ai/openai';
 
-export const BookingStateSchema = z.object({
+const BookingStateSchema = z.object({
   hasAvailability: z
     .boolean()
     .optional()
@@ -28,9 +28,8 @@ export const BookingStateSchema = z.object({
     .optional()
     .describe('A list of pieces of information that are still missing from the user.'),
 });
-export type BookingState = z.infer<typeof BookingStateSchema>;
 
-export const BookingResponseSchema = z.object({
+const BookingResponseSchema = z.object({
   response: z.string().describe('The textual response to the user.'),
   state: BookingStateSchema.optional().describe('The current state of the booking flow.'),
   bookingId: z.string().optional().describe('The ID of the booking that was created.'),
@@ -39,7 +38,7 @@ export const BookingResponseSchema = z.object({
     .optional()
     .describe('The next piece of information required from the user.'),
 });
-export type BookingResponse = z.infer<typeof BookingResponseSchema>;
+type BookingResponse = z.infer<typeof BookingResponseSchema>;
 
 export async function bookingAgent(
   session: BookingSession

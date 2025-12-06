@@ -9,7 +9,7 @@ const AvailabilityInputSchema = z.object({
     roomType: z.nativeEnum(RoomType).describe("The type of room to check for."),
 });
 
-export const getAvailability = async (input: z.infer<typeof AvailabilityInputSchema>) => {
+export async function getAvailability(input: z.infer<typeof AvailabilityInputSchema>) {
     try {
         const availableRooms = await getAvailableRoomsForType(
             input.roomType,

@@ -20,7 +20,7 @@ const CreateBookingInputSchema = z.object({
     numberOfRooms: z.string(),
 });
 
-export const createBooking = async (input: z.infer<typeof CreateBookingInputSchema>) => {
+export async function createBooking(input: z.infer<typeof CreateBookingInputSchema>) {
     console.log('Creating booking with input:', input);
     const { 
         guestId, guestName, guestEmail, checkIn, checkOut, 
