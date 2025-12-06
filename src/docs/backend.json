@@ -376,45 +376,44 @@
       "required": ["vibeScore", "escalationRisk", "reasoning", "suggestedAction"]
     },
     "BookingSession": {
-        "title": "Booking Session",
-        "description": "Stores the state of a user's booking conversation with the AI.",
-        "type": "object",
-        "properties": {
-            "userId": {
-                "type": "string",
-                "description": "The user's unique ID."
-            },
-            "checkIn": {
-                "type": "string",
-                "format": "date"
-            },
-            "checkOut": {
-                "type": "string",
-                "format": "date"
-            },
-            "roomType": {
-                "type": "string",
-                "enum": ["Standard", "Deluxe", "Suite"]
-            },
-            "numberOfGuests": {
-                "type": "number"
-            },
-            "history": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "role": { "type": "string", "enum": ["user", "assistant"] },
-                        "content": { "type": "string" }
-                    }
-                }
-            },
-            "updatedAt": {
-                "type": "string",
-                "format": "date-time"
-            }
+      "title": "Booking Session",
+      "description": "Stores the conversational state of the AI booking agent for a user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
         },
-        "required": ["userId"]
+        "history": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": ["user", "assistant"]
+              },
+              "content": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "checkIn": { "type": "string", "format": "date" },
+        "checkOut": { "type": "string", "format": "date" },
+        "roomType": { "type": "string", "enum": ["Standard", "Deluxe", "Suite"] },
+        "adults": { "type": "string" },
+        "children": { "type": "string" },
+        "numberOfRooms": { "type": "string" },
+        "documentNumber": { "type": "string" },
+        "documentImage": { "type": "string", "format": "uri" },
+        "selfieImage": { "type": "string", "format": "uri" },
+        "bookingConfirmed": { "type": "boolean" },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId"]
     }
   },
   "auth": {

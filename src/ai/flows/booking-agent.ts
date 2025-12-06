@@ -1,52 +1,12 @@
 
 'use server';
 
+import { getSession, updateSession } from './session';
 import { getAvailableRoomsForType } from '@/lib/data';
 import { RoomType, Guest, Room } from '@/lib/types';
 import { adminDb } from '@/firebase/admin';
-import { Timestamp } from 'firebase-admin/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { createBookingAction } from '@/app/actions';
-
-// Use a simplified session type on the server
-interface BookingSession {
-    userId: string;
-    history: { role: 'user' | 'assistant'; content: string }[];
-    checkIn?: string;
-    checkOut?: string;
-    roomType?: RoomType;
-    adults?: string;
-    children?: string;
-    numberOfRooms?: string;
-    documentNumber?: string;
-    documentImage?: string;
-    selfieImage?: string;
-    bookingConfirmed?: boolean;
-    updatedAt?: Timestamp;
-}
-
-
-async function getSession(userId: string): Promise<BookingSession> {
-    if (!userId) {
-        throw new Error("User ID is required to get a session.");
-    }
-    const sessionRef = adminDb.collection('bookingSessions').doc(userId);
-    const sessionDoc = await sessionRef.get();
-    if (sessionDoc.exists) {
-        const data = sessionDoc.data() as BookingSession;
-        return { ...data, history: data.history || [] };
-    }
-    return { userId, history: [] };
-}
-
-async function updateSession(userId: string, data: Partial<BookingSession>): Promise<{ status: string }> {
-    if (!userId) {
-        throw new Error("User ID is required to update a session.");
-    }
-    const sessionRef = adminDb.collection('bookingSessions').doc(userId);
-    await sessionRef.set({ ...data, updatedAt: Timestamp.now() }, { merge: true });
-    return { status: "success" };
-}
-
 
 type UIRequest = 'dates' | 'roomType' | 'numberOfGuests' | 'documentNumber' | 'documentImage' | 'selfieImage' | 'confirmBooking';
 
@@ -63,19 +23,26 @@ export async function bookingAgent(
   const guestDoc = await adminDb.collection('guests').doc(userId).get();
   const guest: Guest = guestDoc.exists ? (guestDoc.data() as Guest) : { id: userId, name: 'Valued Guest', email: '' };
 
-  // Update session with images if provided
-  if (documentImage) session.documentImage = documentImage;
-  if (selfieImage) session.selfieImage = selfieImage;
+  // Update session with images if provided, then clear them for the next turn
+  if (documentImage) {
+      session.documentImage = documentImage;
+  }
+  if (selfieImage) {
+      session.selfieImage = selfieImage;
+  }
   
+  // If the booking was confirmed and user sends a new message, restart the confirmation process
   if(userMessage && session.bookingConfirmed) {
       session.bookingConfirmed = false;
   }
   
-  await updateSession(userId, session);
+  if (userMessage) {
+    session.history.push({role: 'user', content: userMessage});
+  }
 
-  const history = session.history || [];
+  // --- Start of Deterministic Logic ---
 
-  if (!userMessage && history.length === 0) {
+  if (session.history.length === 0 || (session.history.length === 1 && session.history[0].role === 'user')) {
       const welcomeMessage = "Welcome to ElysianAI! To get started, please provide your desired check-in and check-out dates.";
       session.history.push({role: 'assistant', content: welcomeMessage});
       await updateSession(userId, { history: session.history });
@@ -85,22 +52,20 @@ export async function bookingAgent(
           request: 'dates'
       }
   }
-
+  
+  // Simple NLP for demo purposes
   if (userMessage) {
-    session.history.push({role: 'user', content: userMessage});
-    // This is a simplified logic. A real agent would parse the userMessage here.
-    // For the demo, we assume the user provides info in order.
     if (!session.checkIn || !session.checkOut) {
-        // A real implementation would parse dates from `userMessage`. We'll just set some for the demo.
         const checkIn = new Date();
         const checkOut = new Date();
-        checkOut.setDate(checkIn.getDate() + 2);
+        checkOut.setDate(checkIn.getDate() + 2); // default to 2 nights if not specified
         session.checkIn = checkIn.toISOString().split('T')[0];
         session.checkOut = checkOut.toISOString().split('T')[0];
     } else if (!session.roomType) {
         const roomTypeMatch = userMessage.match(/Standard|Deluxe|Suite/i);
-        session.roomType = roomTypeMatch ? roomTypeMatch[0] as RoomType : RoomType.Standard;
+        session.roomType = roomTypeMatch ? roomTypeMatch[0] as RoomType : undefined;
     } else if (!session.adults) {
+        // A real implementation would parse this better
         session.adults = "2";
         session.children = "0";
         session.numberOfRooms = "1";
@@ -111,81 +76,95 @@ export async function bookingAgent(
     }
   }
 
+  await updateSession(userId, session);
+
 
   // --- Step 1: Check for missing info and request it deterministically ---
   if (!session.checkIn || !session.checkOut) {
     const responseText = "Please provide your check-in and check-out dates (e.g., 'Dec 10 to Dec 12').";
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, { history: session.history });
+    if (session.history[session.history.length-1].content !== responseText) {
+        session.history.push({role: 'assistant', content: responseText });
+        await updateSession(userId, { history: session.history });
+    }
     return {
       response: responseText,
-      history,
+      history: session.history,
       request: 'dates'
     };
   }
 
   if (!session.roomType) {
     const responseText = `Great. Which room type would you like? Your options are: ${Object.values(RoomType).join(', ')}.`;
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, { history: session.history });
+     if (session.history[session.history.length-1].content !== responseText) {
+        session.history.push({role: 'assistant', content: responseText });
+        await updateSession(userId, { history: session.history });
+    }
     return {
       response: responseText,
-      history,
+      history: session.history,
       request: 'roomType'
     };
   }
 
   if (!session.adults || !session.children || !session.numberOfRooms) {
     const responseText = "Got it. How many adults, children, and rooms will you need?";
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, { history: session.history });
+    if (session.history[session.history.length-1].content !== responseText) {
+        session.history.push({role: 'assistant', content: responseText });
+        await updateSession(userId, { history: session.history });
+    }
     return {
       response: responseText,
-      history,
+      history: session.history,
       request: 'numberOfGuests'
     };
   }
 
   if (!session.documentNumber) {
     const responseText = "Perfect. For verification, please enter your ID document number (e.g., passport number).";
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, { history: session.history });
+    if (session.history[session.history.length-1].content !== responseText) {
+        session.history.push({role: 'assistant', content: responseText });
+        await updateSession(userId, { history: session.history });
+    }
     return {
       response: responseText,
-      history,
+      history: session.history,
       request: 'documentNumber'
     };
   }
 
   if (!session.documentImage) {
     const responseText = "Thank you. Now, please upload a clear image of that ID document.";
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, { history: session.history });
+    if (session.history[session.history.length-1].content !== responseText) {
+        session.history.push({role: 'assistant', content: responseText });
+        await updateSession(userId, { history: session.history });
+    }
     return {
       response: responseText,
-      history,
+      history: session.history,
       request: 'documentImage'
     };
   }
 
   if (!session.selfieImage) {
     const responseText = "Almost done. Please take a live selfie for verification.";
-    session.history.push({role: 'assistant', content: responseText });
-    await updateSession(userId, { history: session.history });
+    if (session.history[session.history.length-1].content !== responseText) {
+        session.history.push({role: 'assistant', content: responseText });
+        await updateSession(userId, { history: session.history });
+    }
     return {
       response: responseText,
-      history,
+      history: session.history,
       request: 'selfieImage'
     };
   }
 
   // --- Step 2: Check room availability ---
   const availableRooms: Room[] = await getAvailableRoomsForType(session.roomType, new Date(session.checkIn), new Date(session.checkOut));
-  if (!availableRooms.length) {
+  if (availableRooms.length === 0) {
     const responseText = "Sorry, no rooms of that type are available for your selected dates. Please choose different dates.";
     // Reset dates to re-trigger the check
     await updateSession(userId, { checkIn: undefined, checkOut: undefined, history: [...session.history, {role: 'assistant', content: responseText}] });
-    return { response: responseText, history, request: 'dates' };
+    return { response: responseText, history: session.history, request: 'dates' };
   }
 
   // --- Step 3: Confirm booking with the user ---
@@ -200,7 +179,7 @@ export async function bookingAgent(
     const responseText = summary + "\nPlease type 'yes' or 'confirm' to finalize this booking.";
     session.history.push({role: 'assistant', content: responseText });
     await updateSession(userId, { history: session.history });
-    return { response: responseText, history, request: 'confirmBooking' };
+    return { response: responseText, history: session.history, request: 'confirmBooking' };
   }
 
   // --- Step 4: Create booking ---
