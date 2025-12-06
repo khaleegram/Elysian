@@ -27,6 +27,7 @@ import {
   Settings,
   QrCode,
   Megaphone,
+  Power,
 } from 'lucide-react';
 import { ElysianAILogo } from '@/components/icons';
 import { AdminGate } from '@/components/admin/admin-gate';
@@ -44,6 +45,7 @@ const menuItems = [
   { href: '/admin/scanner', label: 'QR Scanner', icon: QrCode },
   { href: '/admin/users', label: 'User Management', icon: Users },
   { href: '/admin/notifications', label: 'Notifications', icon: Bell },
+  { href: '/admin/duf', label: 'DUF Monitor', icon: Power },
   { href: '/billboard', label: 'Billboard', icon: Megaphone },
 ];
 
