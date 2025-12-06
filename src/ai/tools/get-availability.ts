@@ -20,12 +20,12 @@ export const getAvailability = async (input: z.infer<typeof AvailabilityInputSch
         if (availableRooms.length > 0) {
             return {
                 isAvailable: true,
-                message: `Yes, ${availableRooms.length} ${input.roomType} room(s) are available.`,
+                message: `Yes, we have ${input.roomType} rooms available for those dates.`,
             };
         } else {
             return {
                 isAvailable: false,
-                message: `No, there are no ${input.roomType} rooms available for those dates.`,
+                message: `Unfortunately, there are no ${input.roomType} rooms available for the selected dates. Would you like to try different dates or another room type?`,
             };
         }
     } catch (error) {

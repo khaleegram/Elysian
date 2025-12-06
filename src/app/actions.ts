@@ -1,7 +1,6 @@
 
 'use server';
 
-import { bookingAgent } from '@/ai/flows/booking-agent';
 import { localGuide } from '@/ai/flows/local-guide';
 import { fraudScoringAndReasoning, FraudScoringInput } from '@/ai/flows/fraud-scoring-and-reasoning';
 import { analyzeServiceRequest } from '@/ai/flows/service-request-analysis';
@@ -14,7 +13,7 @@ import { cookies, headers } from 'next/headers';
 import { detectAnomalies } from '@/ai/flows/anomaly-detection-with-explainable-alerts';
 import { getDynamicUtilityFootprintDecision } from '@/ai/flows/dynamic-utility-footprint';
 import { uploadDataUri } from '@/lib/cloudinary-server';
-import { getSession, updateSession, type BookingSession } from '@/ai/flows/session';
+import { getSession, updateSession, bookingAgent, type BookingSession } from '@/ai/flows';
 
 import {
   createBooking as dbCreateBooking,
@@ -483,8 +482,6 @@ revalidatePath('/admin/dashboard');
 // Server action for the booking agent
 export async function bookingAgentAction(
     userId: string,
-    userName: string,
-    userEmail: string,
     userMessage?: string,
     documentImage?: string,
     selfieImage?: string
@@ -494,7 +491,12 @@ export async function bookingAgentAction(
       return { error: true, errorMessage: 'Not authenticated' };
     }
 
-    const session = await getSession(userId, userName, userEmail, userMessage);
+    let session = await getSession(userId);
+
+    // Append new message if it exists
+    if (userMessage) {
+        session.history.push({ role: 'user', content: userMessage });
+    }
     
     if (documentImage) {
         session.documentImage = documentImage;
@@ -503,11 +505,11 @@ export async function bookingAgentAction(
         session.selfieImage = selfieImage;
     }
 
+    // Call the AI agent logic
     const result = await bookingAgent(session);
     
-    // Normalize result
     return {
-      history: session.history,
+      history: result.history,
       response: result.response,
       bookingId: result.bookingId ?? null,
       requires: result.requires ?? null,

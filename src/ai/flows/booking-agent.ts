@@ -70,7 +70,7 @@ Your process MUST follow these steps in order:
 8.  **Congratulate**: If the booking is successful, include the \`bookingId\` in your response and congratulate the user on their confirmed booking.
 
 Today's date is ${formatDate(new Date())}.
-Always be polite, clear, and efficient in your responses.
+Always be polite, clear, and efficient in your responses. You MUST return a JSON object that conforms to the BookingResponse schema.
 `;
 
 const tools = [
@@ -105,10 +105,13 @@ const tools = [
                     checkOut: { type: 'string', description: "Check-out date in YYYY-MM-DD format." },
                     roomType: { type: 'string', enum: ['Standard', 'Deluxe', 'Suite'] },
                     documentNumber: { type: 'string' },
+                    adults: { type: 'string' },
+                    children: { type: 'string' },
+                    numberOfRooms: { type: 'string' },
                     documentImage: { type: 'string', format: 'uri' },
                     selfieImage: { type: 'string', format: 'uri' },
                 },
-                required: ['guestId', 'guestName', 'guestEmail', 'checkIn', 'checkOut', 'roomType', 'documentNumber', 'documentImage', 'selfieImage'],
+                required: ['guestId', 'guestName', 'guestEmail', 'checkIn', 'checkOut', 'roomType', 'documentNumber', 'adults', 'children', 'numberOfRooms', 'documentImage', 'selfieImage'],
             }
         }
     }
@@ -133,10 +136,11 @@ async function bookingAgentFlow(session: BookingSession): Promise<BookingRespons
     ];
 
     const response = await openai.chat.completions.create({
-        model: 'gpt-4.1-turbo',
+        model: 'gpt-4o',
         messages: messages,
         tools: tools,
         tool_choice: 'auto',
+        response_format: { type: 'json_object' }
     });
 
     const responseMessage = response.choices[0].message;
@@ -165,20 +169,23 @@ async function bookingAgentFlow(session: BookingSession): Promise<BookingRespons
         }
         
         const secondResponse = await openai.chat.completions.create({
-            model: 'gpt-4.1-turbo',
+            model: 'gpt-4o',
             messages: messages,
             response_format: { type: 'json_object' }
         });
         
         const jsonOutput = secondResponse.choices[0].message.content;
         const parsedOutput = BookingResponseSchema.parse(JSON.parse(jsonOutput || '{}'));
-        await updateSession(session.userId, parsedOutput);
+        await updateSession(session.userId, { ...session, ...parsedOutput });
         return parsedOutput;
 
     } else {
         const jsonOutput = response.choices[0].message.content;
-        const parsedOutput = BookingResponseSchema.parse(JSON.parse(jsonOutput || '{}'));
-        await updateSession(session.userId, parsedOutput);
+        if (!jsonOutput) {
+            throw new Error("AI response was empty.");
+        }
+        const parsedOutput = BookingResponseSchema.parse(JSON.parse(jsonOutput));
+        await updateSession(session.userId, { ...session, ...parsedOutput });
         return parsedOutput;
     }
 }

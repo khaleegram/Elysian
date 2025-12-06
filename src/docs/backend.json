@@ -383,6 +383,8 @@
         "userId": {
           "type": "string"
         },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string", "format": "email" },
         "history": {
           "type": "array",
           "items": {
@@ -413,7 +415,7 @@
           "format": "date-time"
         }
       },
-      "required": ["userId"]
+      "required": ["userId", "history"]
     }
   },
   "auth": {

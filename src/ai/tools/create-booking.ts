@@ -15,11 +15,18 @@ const CreateBookingInputSchema = z.object({
     documentNumber: z.string(),
     documentImage: z.string().url(),
     selfieImage: z.string().url(),
+    adults: z.string(),
+    children: z.string(),
+    numberOfRooms: z.string(),
 });
 
 export const createBooking = async (input: z.infer<typeof CreateBookingInputSchema>) => {
     console.log('Creating booking with input:', input);
-    const { guestId, guestName, guestEmail, checkIn, checkOut, roomType, documentNumber, documentImage, selfieImage } = input;
+    const { 
+        guestId, guestName, guestEmail, checkIn, checkOut, 
+        roomType, documentNumber, documentImage, selfieImage,
+        adults, children, numberOfRooms
+    } = input;
 
     try {
         const availableRooms = await getAvailableRoomsForType(roomType, new Date(checkIn), new Date(checkOut));
@@ -43,9 +50,9 @@ export const createBooking = async (input: z.infer<typeof CreateBookingInputSche
             roomId: null,
             status: BookingStatus.ReviewNeeded, // All AI bookings need review
             paymentMethod: PaymentMethod.PayLater, // Default for AI
-            adults: 1, // Default
-            children: 0, // Default
-            numberOfRooms: 1, // Default
+            adults: parseInt(adults, 10),
+            children: parseInt(children, 10),
+            numberOfRooms: parseInt(numberOfRooms, 10),
             createdAt: FieldValue.serverTimestamp(),
         };
 

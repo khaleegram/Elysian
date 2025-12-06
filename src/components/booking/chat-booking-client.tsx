@@ -1,4 +1,3 @@
-
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -35,12 +34,15 @@ export function ChatBookingClient() {
   const [selfieStream, setSelfieStream] = useState<MediaStream | null>(null);
   const selfieVideoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const scrollAreaRef = useRef<HTMLDivElement | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
         if (scrollAreaRef.current) {
-            scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+            const viewport = scrollAreaRef.current.querySelector('div');
+            if(viewport) {
+                viewport.scrollTop = viewport.scrollHeight;
+            }
         }
     }, 100);
   }, []);
@@ -53,14 +55,15 @@ export function ChatBookingClient() {
     stopCamera();
 
     try {
-      const result = await bookingAgentAction(user.uid, user.displayName || '', user.email || '', userMessage, docImage, selfImage);
+      const result = await bookingAgentAction(user.uid, userMessage, docImage, selfImage);
       if (result.error) throw new Error(result.errorMessage);
       
-      // The history from the server is the source of truth
-      setMessages(result.history || []);
-      if (result.response) {
-        setMessages(prev => [...(prev || []), {role: 'assistant', content: result.response}]);
+      const newMessages: Message[] = [];
+      if(result.response) {
+        newMessages.push({role: 'assistant', content: result.response});
       }
+
+      setMessages(prev => [...(result.history || prev), ...newMessages]);
 
       if (result.bookingId) setBookingId(result.bookingId);
       if (result.requires) setRequires(result.requires as any);
@@ -78,11 +81,12 @@ export function ChatBookingClient() {
 
   // Initial load
   useEffect(() => {
-    if (user) {
-      callBookingAgent(); // Call with no prompt to get initial greeting
-    } else if (user === null) {
+    if (user === null) {
       router.push('/login?redirect=/chat');
       setIsLoading(false);
+    } else if (user) {
+      // Call with no prompt to get initial greeting
+      callBookingAgent(); 
     }
   }, [user, router]); // `callBookingAgent` removed to prevent re-triggering
 
