@@ -1,0 +1,108 @@
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+  
+    // Helper functions
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      // Check for a document in the 'admins' collection for the user's UID.
+      return exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isStaff() {
+      return exists(/databases/$(database)/documents/staff/$(request.auth.uid));
+    }
+    
+    // ADMINS:
+    // - Admins can read their own profile.
+    // - Authenticated users can create their own Admin profile.
+    // - Admins can update their own profile.
+    // - Any authenticated user can list admins to bootstrap the first one.
+    match /admins/{userId} {
+      allow list: if request.auth != null;
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId);
+      allow delete: if isAdmin();
+    }
+
+    // GUESTS:
+    // - Users can create their own guest profile upon sign-up.
+    // - Users can read their own profile.
+    // - Users can update their own profile (e.g., phone number).
+    // - Admins can read/write any guest profile (for management).
+    // - Any authenticated user can list guests to find their own account for promotion.
+    match /guests/{userId} {
+      allow list: if request.auth != null;
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ROOMS:
+    // - All authenticated users can read room information (to see availability).
+    // - Only admins can create, update, or delete room listings.
+    match /rooms/{roomId} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    // BOOKINGS:
+    // - Authenticated users can create their own bookings.
+    // - Users can read their own bookings.
+    // - Admins can read all bookings for the dashboard.
+    // - Admins can update bookings (e.g., check-in, status change).
+    match /bookings/{bookingId} {
+      allow read: if get(/databases/$(database)/documents/bookings/$(bookingId)).data.guestId == request.auth.uid || isAdmin();
+      // Allow creation if the user is authenticated (including anonymous users)
+      // and is the owner of the booking they are creating.
+      allow create: if request.auth != null && request.resource.data.guestId == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // SERVICE REQUESTS:
+    // - Users can create requests for their own bookings.
+    // - Users can read requests associated with their bookings.
+    // - Admins and staff can read and update all requests.
+     match /serviceRequests/{serviceRequestId} {
+      allow read: if get(/databases/$(database)/documents/bookings/$(resource.data.bookingId)).data.guestId == request.auth.uid || isAdmin() || isStaff();
+      allow create: if get(/databases/$(database)/documents/bookings/$(request.resource.data.bookingId)).data.guestId == request.auth.uid;
+      allow update: if isAdmin() || isStaff();
+      allow delete: if isAdmin();
+    }
+    
+    // STAFF:
+    // - Staff can read their own profiles.
+    // - Admins can read and write all staff profiles.
+    match /staff/{staffId} {
+        allow read: if isOwner(staffId) || isAdmin();
+        allow list: if isAdmin();
+        allow write: if isAdmin();
+    }
+
+    // ASSIGNMENTS:
+    // - Staff and Admins can read assignments.
+    // - The public billboard needs to read this, so allow unauthenticated reads.
+    match /assignments/{assignmentId} {
+        allow read: if true; // Allow public read for the billboard
+        allow list: if true; // Allow public list for the billboard
+        allow write: if isAdmin(); // Only backend/admin can create assignments
+    }
+
+
+    // RESERVATIONS:
+    // This is a "lock" collection to prevent double bookings.
+    // Only the backend (via Admin SDK) can create or delete reservations.
+    // No client-side access is allowed.
+    match /reservations/{reservationId} {
+        allow read, write: if false;
+    }
+  }
+}

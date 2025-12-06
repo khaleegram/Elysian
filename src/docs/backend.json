@@ -1,0 +1,479 @@
+
+{
+  "entities": {
+    "Room": {
+      "title": "Room",
+      "description": "Represents a hotel room.",
+      "type": "object",
+      "properties": {
+        "number": {
+          "type": "string",
+          "description": "The room number."
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of the room (e.g., Standard, Deluxe, Suite).",
+          "enum": [
+            "Standard",
+            "Deluxe",
+            "Suite"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "description": "The current status of the room.",
+          "enum": [
+            "Available",
+            "Occupied",
+            "Dirty",
+            "Maintenance"
+          ]
+        },
+        "price": {
+          "type": "number",
+          "description": "The price per night for the room."
+        },
+        "images": {
+            "type": "array",
+            "description": "A list of images for the room.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "format": "uri"
+                    },
+                    "publicId": {
+                        "type": "string"
+                    }
+                },
+                "required": ["url", "publicId"]
+            }
+        }
+      },
+      "required": [
+        "number",
+        "type",
+        "status",
+        "price"
+      ]
+    },
+     "AuditLogEntry": {
+      "title": "Audit Log Entry",
+      "description": "An entry in an audit log for administrative actions.",
+      "type": "object",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "adminId": {
+          "type": "string"
+        },
+        "adminName": {
+            "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": ["timestamp", "adminId", "adminName", "action"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Represents a guest's booking.",
+      "type": "object",
+      "properties": {
+        "guestId": {
+          "type": "string",
+          "description": "The ID of the associated guest profile."
+        },
+        "guestName": {
+          "type": "string"
+        },
+        "guestEmail": {
+          "type": "string",
+          "format": "email"
+        },
+        "guestPhone": {
+          "type": "string"
+        },
+        "adults": {
+          "type": "number",
+          "description": "Number of adults for the booking."
+        },
+        "children": {
+            "type": "number",
+            "description": "Number of children for the booking."
+        },
+        "numberOfRooms": {
+            "type": "number",
+            "description": "Number of rooms requested for the booking."
+        },
+        "documentType": {
+          "type": "string",
+          "description": "The type of identification document provided by the guest.",
+          "enum": ["Passport", "Driver's License", "National ID (NIN)"]
+        },
+        "documentNumber": {
+          "type": "string",
+          "description": "The number on the identification document."
+        },
+        "documentImageUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the guest's uploaded ID image."
+        },
+        "selfieImageUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to the guest's uploaded selfie image."
+        },
+        "checkIn": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "checkOut": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "roomId": {
+          "type": "string"
+        },
+         "roomType": {
+          "type": "string",
+           "enum": [
+            "Standard",
+            "Deluxe",
+            "Suite"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Approved",
+            "Review Needed",
+            "Declined",
+            "Checked-In",
+            "Checked-Out",
+            "Cancelled"
+          ]
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["Card", "Paystack", "Bank Transfer", "Pay Later"]
+        },
+        "paymentId": {
+            "type": "string",
+            "description": "The transaction ID from the payment processor."
+        },
+        "fraudScore": {
+          "type": "number",
+          "description": "The AI-generated fraud score for the booking."
+        },
+        "fraudReasoning": {
+          "type": "string",
+          "description": "The explanation for the fraud score."
+        },
+        "accessPin": {
+          "type": "string",
+          "description": "The 4-digit PIN for room access and check-in."
+        },
+        "notes": {
+            "type": "string",
+            "description": "Internal notes added by administrators."
+        },
+        "auditLog": {
+          "type": "array",
+          "items": {
+            "$ref": "#/entities/AuditLogEntry"
+          }
+        }
+      },
+      "required": [
+        "guestId",
+        "guestName",
+        "guestEmail",
+        "documentType",
+        "documentNumber",
+        "documentImageUrl",
+        "checkIn",
+        "checkOut",
+        "status",
+        "paymentMethod",
+        "roomType",
+        "adults",
+        "children",
+        "numberOfRooms"
+      ]
+    },
+    "ServiceRequest": {
+      "title": "Service Request",
+      "description": "Represents a request from a guest for a service.",
+      "type": "object",
+      "properties": {
+        "bookingId": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "Room Service",
+            "Housekeeping",
+            "Maintenance"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "Pending",
+            "In-Progress",
+            "Completed"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "bookingId",
+        "type",
+        "description",
+        "status",
+        "createdAt"
+      ]
+    },
+    "Guest": {
+      "title": "Guest",
+      "description": "Represents a hotel guest, linking multiple bookings.",
+      "type": "object",
+      "properties": {
+        "name": {
+            "type": "string"
+        },
+        "email": {
+            "type": "string",
+            "format": "email"
+        },
+        "phone": {
+            "type": "string"
+        },
+        "bookingHistory": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "description": "An array of booking IDs associated with this guest."
+        }
+      },
+      "required": [
+        "name",
+        "email"
+      ]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Represents a hotel administrator.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string",
+          "format": "email"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin"]
+        }
+      },
+      "required": [
+        "name",
+        "email",
+        "role"
+      ]
+    },
+    "Staff": {
+      "title": "Staff",
+      "description": "Represents a hotel staff member.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["staff"] },
+        "staffType": {
+          "type": "string",
+          "enum": ["Housekeeping", "Maintenance", "Room Service", "Security"]
+        },
+        "isAvailable": { "type": "boolean" }
+      },
+      "required": ["name", "email", "role", "staffType", "isAvailable"]
+    },
+    "Assignment": {
+      "title": "Assignment",
+      "description": "Links a staff member to a service request.",
+      "type": "object",
+      "properties": {
+        "serviceRequestId": { "type": "string" },
+        "staffId": { "type": "string" },
+        "assignedAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["Assigned", "Completed"] }
+      },
+      "required": ["serviceRequestId", "staffId", "assignedAt", "status"]
+    },
+    "Reservation": {
+      "title": "Reservation",
+      "description": "A lock to prevent double bookings for a specific room on a specific date range.",
+      "type": "object",
+      "properties": {
+        "roomId": {
+          "type": "string"
+        },
+        "bookingId": {
+          "type": "string"
+        },
+        "checkIn": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "checkOut": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["roomId", "bookingId", "checkIn", "checkOut"]
+    },
+    "VibeScore": {
+      "title": "Vibe Score",
+      "description": "Represents the predicted emotional state and satisfaction of a guest.",
+      "type": "object",
+      "properties": {
+        "vibeScore": {
+          "type": "number",
+          "description": "A score from 1-10 representing guest satisfaction."
+        },
+        "escalationRisk": {
+          "type": "string",
+          "enum": ["Low", "Medium", "High", "Critical"]
+        },
+        "reasoning": {
+          "type": "string",
+          "description": "Explanation for the current vibe score, highlighting key negative signals."
+        },
+        "suggestedAction": {
+          "type": "string",
+          "description": "A proactive, concrete action for staff to take to improve the guest's experience."
+        }
+      },
+      "required": ["vibeScore", "escalationRisk", "reasoning", "suggestedAction"]
+    },
+    "BookingSession": {
+        "title": "Booking Session",
+        "description": "Stores the state of a user's booking conversation with the AI.",
+        "type": "object",
+        "properties": {
+            "userId": {
+                "type": "string",
+                "description": "The user's unique ID."
+            },
+            "checkIn": {
+                "type": "string",
+                "format": "date"
+            },
+            "checkOut": {
+                "type": "string",
+                "format": "date"
+            },
+            "roomType": {
+                "type": "string",
+                "enum": ["Standard", "Deluxe", "Suite"]
+            },
+            "numberOfGuests": {
+                "type": "number"
+            },
+            "history": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "role": { "type": "string", "enum": ["user", "assistant"] },
+                        "content": { "type": "string" }
+                    }
+                }
+            },
+            "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+            }
+        },
+        "required": ["userId"]
+    }
+  },
+  "auth": {
+    "providers": [
+      "anonymous",
+      "google.com",
+      "password"
+    ]
+  },
+  "firestore": {
+    "/rooms/{roomId}": {
+      "schema": {
+        "$ref": "#/entities/Room"
+      },
+      "description": "Stores individual hotel room information."
+    },
+    "/bookings/{bookingId}": {
+      "schema": {
+        "$ref": "#/entities/Booking"
+      },
+      "description": "Stores individual booking records."
+    },
+    "/serviceRequests/{serviceRequestId}": {
+      "schema": {
+        "$ref": "#/entities/ServiceRequest"
+      },
+      "description": "Stores guest service requests."
+    },
+    "/guests/{guestId}": {
+        "schema": {
+            "$ref": "#/entities/Guest"
+        },
+        "description": "Stores persistent guest profiles."
+    },
+    "/admins/{adminId}": {
+      "schema": {
+        "$ref": "#/entities/Admin"
+      },
+      "description": "Stores administrator profiles."
+    },
+    "/staff/{staffId}": {
+      "schema": { "$ref": "#/entities/Staff" },
+      "description": "Stores staff member profiles and their availability."
+    },
+    "/assignments/{assignmentId}": {
+      "schema": { "$ref": "#/entities/Assignment" },
+      "description": "Stores the link between a service request and a staff member."
+    },
+    "/reservations/{reservationId}": {
+        "schema": {
+            "$ref": "#/entities/Reservation"
+        },
+        "description": "Stores reservation locks to prevent double bookings."
+    },
+    "/bookingSessions/{userId}": {
+        "schema": {
+            "$ref": "#/entities/BookingSession"
+        },
+        "description": "Stores the conversational state for the AI booking agent."
+    }
+  }
+}

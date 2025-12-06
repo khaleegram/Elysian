@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "target": "ES2017",
+    "moduleResolution": "node",
+    "jsx": "react",
+    "lib": ["esnext", "dom"]
+  },
+  "include": [
+    "src/simulations/**/*.ts",
+    "src/ai/flows/**/*.ts",
+    "src/lib/**/*.ts"
+  ]
+}
