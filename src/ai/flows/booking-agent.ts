@@ -5,11 +5,10 @@ import { getSession, updateSession, BookingSession } from './session';
 import { getAvailableRoomsForType } from '@/lib/data';
 import { RoomType, Guest, Room } from '@/lib/types';
 import { adminDb } from '@/firebase/admin';
-import { doc, getDoc } from 'firebase/firestore';
 import { createBookingAction } from '@/app/actions';
 import cloudinary from '@/lib/cloudinary';
 
-// --- Image Upload Helpers (moved from actions.ts) ---
+// --- Image Upload Helpers ---
 const dataUriToBuffer = (dataUri: string) => {
     const base64 = dataUri.split(',')[1];
     return Buffer.from(base64, 'base64');
@@ -52,9 +51,9 @@ export async function bookingAgent(
     session.history.push({role: 'user', content: userMessage});
     
     if (session.bookingConfirmed) {
-        session = { userId, history: session.history }; // Reset session if starting new conversation after confirmation
+        session = { userId, history: session.history }; // Reset session
     } else if (!session.checkIn || !session.checkOut) {
-        // Super simple date parsing for demo. A real app would use the GPT date tool.
+        // Simple date parsing. In a real app, use GPT tool.
         session.checkIn = new Date().toISOString().split('T')[0];
         const checkoutDate = new Date();
         checkoutDate.setDate(checkoutDate.getDate() + 2);
@@ -73,17 +72,17 @@ export async function bookingAgent(
     }
   }
   
-  // Handle incoming images by uploading them to Cloudinary
+  // Handle incoming images
   if (documentImage) {
       const uploadResult = await uploadDataUri(documentImage, "elysian_ai_ids");
-      session.documentImage = uploadResult.secure_url; // Store URL
+      session.documentImage = uploadResult.secure_url;
   }
   if (selfieImage) {
       const uploadResult = await uploadDataUri(selfieImage, "elysian_ai_selfies");
-      session.selfieImage = uploadResult.secure_url; // Store URL
+      session.selfieImage = uploadResult.secure_url;
   }
   
-  // --- Step 1: Check for missing info and request it deterministically ---
+  // --- Step 1: Check for missing info and request it ---
   if (session.history.length === 0 || (session.history.length === 1 && session.history[0].role === 'user')) {
       const welcomeMessage = "Welcome to ElysianAI! To get started, please provide your desired check-in and check-out dates.";
       session.history.push({role: 'assistant', content: welcomeMessage});
@@ -93,60 +92,48 @@ export async function bookingAgent(
 
   if (!session.checkIn || !session.checkOut) {
     const responseText = "Please provide your check-in and check-out dates (e.g., 'Dec 10 to Dec 12').";
-    if (session.history[session.history.length-1].content !== responseText) {
-        session.history.push({role: 'assistant', content: responseText });
-    }
+    session.history.push({role: 'assistant', content: responseText });
     await updateSession(userId, session);
     return { response: responseText, history: session.history, request: 'dates' };
   }
 
   if (!session.roomType) {
     const responseText = `Great. Which room type would you like? Your options are: ${Object.values(RoomType).join(', ')}.`;
-     if (session.history[session.history.length-1].content !== responseText) {
-        session.history.push({role: 'assistant', content: responseText });
-    }
+    session.history.push({role: 'assistant', content: responseText });
     await updateSession(userId, session);
     return { response: responseText, history: session.history, request: 'roomType' };
   }
 
   if (!session.adults || !session.children || !session.numberOfRooms) {
     const responseText = "Got it. How many adults, children, and rooms will you need?";
-    if (session.history[session.history.length-1].content !== responseText) {
-        session.history.push({role: 'assistant', content: responseText });
-    }
+    session.history.push({role: 'assistant', content: responseText });
     await updateSession(userId, session);
     return { response: responseText, history: session.history, request: 'numberOfGuests' };
   }
 
   if (!session.documentNumber) {
     const responseText = "For verification, please enter your ID document number (e.g., passport number).";
-    if (session.history[session.history.length-1].content !== responseText) {
-        session.history.push({role: 'assistant', content: responseText });
-    }
+    session.history.push({role: 'assistant', content: responseText });
     await updateSession(userId, session);
     return { response: responseText, history: session.history, request: 'documentNumber' };
   }
 
   if (!session.documentImage) {
     const responseText = "Thank you. Now, please upload a clear image of that ID document.";
-    if (session.history[session.history.length-1].content !== responseText) {
-        session.history.push({role: 'assistant', content: responseText });
-    }
+    session.history.push({role: 'assistant', content: responseText });
     await updateSession(userId, session);
     return { response: responseText, history: session.history, request: 'documentImage' };
   }
 
   if (!session.selfieImage) {
     const responseText = "Almost done. Please take a live selfie for verification.";
-    if (session.history[session.history.length-1].content !== responseText) {
-        session.history.push({role: 'assistant', content: responseText });
-    }
+    session.history.push({role: 'assistant', content: responseText });
     await updateSession(userId, session);
     return { response: responseText, history: session.history, request: 'selfieImage' };
   }
 
   // --- Step 2: Check room availability ---
-  const availableRooms: Room[] = await getAvailableRoomsForType(session.roomType, new Date(session.checkIn), new Date(session.checkOut));
+  const availableRooms: Room[] = await getAvailableRoomsForType(session.roomType!, new Date(session.checkIn), new Date(session.checkOut));
   if (availableRooms.length === 0) {
     const responseText = "Sorry, no rooms of that type are available for your selected dates. Please choose different dates.";
     session.history.push({role: 'assistant', content: responseText});
@@ -154,15 +141,14 @@ export async function bookingAgent(
     return { response: responseText, history: session.history, request: 'dates' };
   }
 
-  // --- Step 3: Confirm booking with the user ---
+  // --- Step 3: Confirm booking ---
   if (!session.bookingConfirmed) {
-    const summary = `I've found an available ${session.roomType} room for your selected dates.
+    const summary = `I've found an available ${session.roomType} room for you.
 - **Guest**: ${guest.name}
 - **Dates**: ${session.checkIn} to ${session.checkOut}
-- **Room Type**: ${session.roomType}
-- **Occupancy**: ${session.adults} adults, ${session.children} children in ${session.numberOfRooms} room(s).
+- **Occupancy**: ${session.adults} adults, ${session.children} children.
 `;
-    const responseText = summary + "\nPlease type 'yes' or 'confirm' to finalize this booking.";
+    const responseText = summary + "\nPlease type 'yes' to confirm this booking.";
     session.history.push({role: 'assistant', content: responseText });
     await updateSession(userId, session);
     return { response: responseText, history: session.history, request: 'confirmBooking' };
@@ -177,8 +163,8 @@ export async function bookingAgent(
   formData.append('country', 'US');
   formData.append('documentType', 'Passport');
   formData.append('documentNumber', session.documentNumber!);
-  formData.append('documentImage', session.documentImage!); // Now a URL
-  formData.append('selfieImage', session.selfieImage!);     // Now a URL
+  formData.append('documentImage', session.documentImage!); 
+  formData.append('selfieImage', session.selfieImage!);     
   formData.append('checkIn', session.checkIn!);
   formData.append('checkOut', session.checkOut!);
   formData.append('roomType', session.roomType!);
@@ -192,7 +178,20 @@ export async function bookingAgent(
   const finalResponse = result.success ? `Booking confirmed! Your booking ID is ${bookingId}. You will be redirected shortly.` : `Booking failed: ${result.message}`;
 
   session.history.push({ role: 'assistant', content: finalResponse });
-  await updateSession(userId, session);
+  // Clear the session for the next booking
+  await updateSession(userId, {
+    history: session.history,
+    checkIn: undefined,
+    checkOut: undefined,
+    roomType: undefined,
+    adults: undefined,
+    children: undefined,
+    numberOfRooms: undefined,
+    documentNumber: undefined,
+    documentImage: undefined,
+    selfieImage: undefined,
+    bookingConfirmed: undefined,
+  });
 
   return { response: finalResponse, history: session.history, bookingId };
 }
